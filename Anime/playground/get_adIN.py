@@ -18,8 +18,8 @@ pipe = StableDiffusionReferencePipeline.from_pretrained(
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,
-      prompt="1girl",
-      num_inference_steps=50,
+      prompt="",
+      num_inference_steps=20,
       reference_attn=True,
       reference_adain=True).images[0]
 

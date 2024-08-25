@@ -237,6 +237,10 @@ def decode_latents(latents,vae):
     image = image.cpu().permute(0, 2, 3, 1).float().numpy().squeeze(0)
     return image
 
+
+
+
+
 # Sample function (regular DDIM)
 @torch.no_grad()
 def sample(
@@ -401,10 +405,13 @@ if __name__=="__main__":
                                       guidance_scale=guidance_scale,
                                       
                                       )
+    
+    
+    
 
-    noisy_l = pipeline.scheduler.add_noise(latent_image, torch.randn_like(latent_image), pipeline.scheduler.timesteps[start_step])
+    #noisy_l = pipeline.scheduler.add_noise(latent_image, torch.randn_like(latent_image), pipeline.scheduler.timesteps[start_step])
 
-    start_latents = inverted_latents[-(start_step + 1)][None]
+    start_latents = inverted_latents[-(start_step+1)][None]
     # start_latents = noisy_l
 
     final_latents = sample(start_latents=start_latents,
