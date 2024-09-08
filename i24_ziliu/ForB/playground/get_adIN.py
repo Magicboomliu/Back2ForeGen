@@ -10,12 +10,12 @@ sys.path.append("../..")
 # from stable_diffusion_reference_with_noise_inversion import StableDiffusionReferencePipeline
 from PIL import Image
 
-image_path = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset/SD_Gen_Images/images/0.png"
+image_path = "/home/zliu/PFN/PFN24/i24_ziliu/ForB/playground/inpaint-cat.png"
 input_image= Image.open(image_path).convert("RGB")
 
 
-pipe = StableDiffusionReferencePipeline.from_pretrained(
-       "runwayml/stable-diffusion-v1-5",
+pipe = StableDiffusionReferencePipeline.from_single_file(
+       "/home/zliu/PFN/pretrained_models/base_models/sd15_anime.safetensors",
        safety_checker=None,
        torch_dtype=torch.float16
        ).to('cuda:0')
@@ -25,8 +25,8 @@ pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 result_img = pipe(ref_image=input_image,
       prompt="A girl with light grey hair and steel blue eyes wearing a bow tie is jogging in a park.",
       num_inference_steps=50,
-      reference_attn=False,
-      reference_adain=True).images[0]
+      reference_attn=True,
+      reference_adain=False).images[0]
 
 
 input_image.save("init.png")

@@ -11,6 +11,7 @@ import torch.utils.checkpoint
 import os
 import logging
 import tqdm
+import itertools
 
 from safetensors import safe_open
 from transformers.utils import ContextManagers
@@ -33,7 +34,7 @@ from diffusers import (
     DDIMInverseScheduler,
     DDIMScheduler
 )
-
+from diffusers.models.attention import BasicTransformerBlock
 from diffusers import StableDiffusionPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
@@ -63,8 +64,11 @@ import  matplotlib.pyplot as plt
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 # from ForB.networks.f2all_converter import F2All_Converter
 # from ForB.networks.f2all_converter_tpm import F2All_Converter
-from ForB.networks.f2all_conveter_ver2 import F2All_Converter
+
+from ForB.networks.learnable_reference_only import ConverterNetwork
 from ForB.losses.layer_wise_l1_loss import LayerWise_L1_Loss
+from ForB.losses.attn_loss import Attn_loss
+
 
 
 def parse_args():
@@ -294,6 +298,8 @@ def parse_args():
 
     parser.add_argument('--use_adIN', action='store_true', help="Increase output verbosity")
 
+    parser.add_argument('--use_attn', action='store_true', help="Increase output verbosity")
+
     
     parser.add_argument(
         "--tracker_project_name",
@@ -496,6 +502,21 @@ def get_all_mean_and_var_and_hidden_states(gn_modules):
 
     return all_mean,all_std,all_hidden_states
 
+
+
+def get_all_attn_states(attn_modules):
+    
+    all_attn_banks = []
+    for i, module in enumerate(attn_modules):
+        all_attn_banks.append(module.attn_bank)
+        module.attn_bank = []
+    
+    return all_attn_banks
+
+
+
+
+
 def position_encoding(num, d_model=512, device='cuda:0'):
     position = torch.arange(0, d_model, device=device).float().unsqueeze(0)
     angle_rates = 1 / torch.pow(10000, (2 * (position // 2)) / d_model)
@@ -586,7 +607,9 @@ def main():
         text_encoder = current_stable_diffusion_model.text_encoder
         unet = current_stable_diffusion_model.unet
         # define the network here
-        converter_network = F2All_Converter(mid_channels=1280)
+        
+        converter_network = ConverterNetwork()
+
 
     # Freeze vae and text_encoder and set unet to trainable.
     vae.requires_grad_(False)
@@ -594,6 +617,8 @@ def main():
     unet.requires_grad_(False) # only make the unet-trainable
     # unet.requires_grad_(False)
     converter_network.train() # train the converter
+
+    
 
     # using xformers for efficient attentions.
     if args.enable_xformers_memory_efficient_attention:
@@ -756,7 +781,8 @@ def main():
         converter_network.train() # FIXME: Specific the Model we want to fixed.
         train_loss = 0.0
         for step, batch in enumerate(train_loader):
-            with accelerator.accumulate(converter_network): # FIXME:Specific the Model we want to train
+            with accelerator.accumulate(converter_network):
+            
                 # get the images
                 image = batch['image']
                 # get the background masks
@@ -874,7 +900,7 @@ def main():
                                 self.mean_bank.append([mean]) # add mean
                                 self.var_bank.append([var])   # add var
                                 self.feature_bank.append([hidden_states]) # add hidden feature
- 
+
                             output_states = output_states + (hidden_states,)
 
                         
@@ -985,16 +1011,12 @@ def main():
 
                     # all the mid bloacks
                     gn_modules = [unet.mid_block]
-                    # # 归一化的强度 gn weight
-                    # unet.mid_block.gn_weight = 0
-                    # 这种递减的 gn_weight 允许模型在下采样过程中对前几层进行更强的归一化，而对后几层的归一化处理逐渐减弱。
                     down_blocks = unet.down_blocks
                     for w, module in enumerate(down_blocks):
                         # module.gn_weight = 1.0 - float(w) / float(len(down_blocks))
                         gn_modules.append(module)
 
-                    #通过遍历 U-Net 的上采样块（up_blocks），代码为每个块设置了一个递增的 gn_weight，从 0.0 逐渐增加到接近 1.0。
-                    # 这种策略允许模型在上采样的不同阶段应用不同强度的归一化，在高分辨率输出的生成过程中平衡特征的恢复和细节的增强。
+
                     up_blocks = unet.up_blocks
                     for w, module in enumerate(up_blocks):
                         # module.gn_weight = float(w) / float(len(up_blocks))
@@ -1021,6 +1043,102 @@ def main():
                         module.var_bank = []
                         module.feature_bank = []
 
+                
+                
+                if args.use_attn:
+                    # Logic Here
+                    def hacked_basic_transformer_inner_forward(
+                        self,
+                        hidden_states: torch.Tensor,
+                        attention_mask: Optional[torch.Tensor] = None,
+                        encoder_hidden_states: Optional[torch.Tensor] = None,
+                        encoder_attention_mask: Optional[torch.Tensor] = None,
+                        timestep: Optional[torch.LongTensor] = None,
+                        cross_attention_kwargs: Dict[str, Any] = None,
+                        class_labels: Optional[torch.LongTensor] = None,):  
+                        
+                        # perform layer noramlzaition.
+                        if self.use_ada_layer_norm:
+                            norm_hidden_states = self.norm1(hidden_states, timestep)
+                        elif self.use_ada_layer_norm_zero:
+                            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+                                hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
+                            )
+                        else:
+                            norm_hidden_states = self.norm1(hidden_states)
+
+                        # 1. Self-Attention
+                        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+                        if self.only_cross_attention:
+                            # update the v
+                            attn_output = self.attn1(
+                                norm_hidden_states,
+                                encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+                                attention_mask=attention_mask,
+                                **cross_attention_kwargs,
+                            )
+                        else:
+                            # when writing, without text prmpt
+                            if MODE == "write":
+                                # save the norm_hidden_states
+                                self.attn_bank.append(norm_hidden_states)
+                                attn_output = self.attn1(
+                                    norm_hidden_states,
+                                    encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+                                    attention_mask=attention_mask,
+                                    **cross_attention_kwargs,
+                                )
+
+                        
+                        if self.use_ada_layer_norm_zero:
+                            attn_output = gate_msa.unsqueeze(1) * attn_output
+                        
+                        # update hidden state
+                        hidden_states = attn_output + hidden_states
+
+                        if self.attn2 is not None:
+                            norm_hidden_states = (
+                                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+                            )
+
+                            # 2. Cross-Attention
+                            attn_output = self.attn2(
+                                norm_hidden_states,
+                                encoder_hidden_states=encoder_hidden_states,
+                                attention_mask=encoder_attention_mask,
+                                **cross_attention_kwargs,
+                            )
+                            hidden_states = attn_output + hidden_states
+
+                        # 3. Feed-forward
+                        norm_hidden_states = self.norm3(hidden_states)
+
+                        if self.use_ada_layer_norm_zero:
+                            norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+
+                        ff_output = self.ff(norm_hidden_states)
+
+                        if self.use_ada_layer_norm_zero:
+                            ff_output = gate_mlp.unsqueeze(1) * ff_output
+
+                        hidden_states = ff_output + hidden_states
+
+                        return hidden_states
+
+
+
+                    attn_modules = [module for module in torch_dfs(unet) if isinstance(module, BasicTransformerBlock)]
+                    #这行代码将找到的 BasicTransformerBlock 模块按照 norm1.normalized_shape[0] 的值（通常表示维度大小）从大到小进行排序。
+                    # 排序的目的是为了在后续的操作中按顺序处理这些模块。
+                    attn_modules = sorted(attn_modules, key=lambda x: -x.norm1.normalized_shape[0])
+
+                    for i, module in enumerate(attn_modules):
+                        module._original_inner_forward = module.forward
+                        module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
+                        module.attn_bank = []
+                        module.attn_weight = float(i) / float(len(attn_modules))
+                        
+                    
 
                 # write the current rf-attentions into forward functions.
                 MODE = "write"
@@ -1033,14 +1151,22 @@ def main():
                 # get all the feature banks / mean banks/ feature banks
                 mean_bank_fore,variance_bank_fore,feature_bank_fore = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 t_embed = position_encoding(timesteps,device=encoder_hidden_states.device)
+
+                
+                fg_attn_banks = get_all_attn_states(attn_modules)
+                fg_attn_banks_list = [fg[0] for fg in fg_attn_banks]
+
                 # use the network here
-                fg2all_mean_bank, fg2all_variance_bank = converter_network(mean_bank = mean_bank_fore,
+                fg2all_mean_bank, fg2all_variance_bank,converted_fg_attn_banks_list = converter_network(mean_bank = mean_bank_fore,
                                 var_bank=variance_bank_fore,
                                 feat_bank=feature_bank_fore,
                                 time_embed=t_embed,
                                 text_embed=encoder_hidden_states,
-                                foreground_mask=fg_mask
+                                foreground_mask=fg_mask,
+                                inputs = fg_attn_banks_list
                                 )
+                
+            
                 noise_pred = unet(
                     noisy_latents,
                     timesteps,
@@ -1049,19 +1175,25 @@ def main():
                 )[0]
                 mean_bank_all,variance_bank_all,feature_bank_all = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 
+            
+                all_attn_banks = get_all_attn_states(attn_modules)
+                all_attn_banks_list = [fg[0] for fg in all_attn_banks]
+                attn_loss = Attn_loss(converted_fg_attn_banks_list,all_attn_banks_list)
+                
+
                 # est_mean_bank,est_variance_bank,gt_mean_bank,gt_variance_bank
                 mean_loss,var_loss = LayerWise_L1_Loss(est_mean_bank=fg2all_mean_bank,est_variance_bank=fg2all_variance_bank,
                                     gt_mean_bank=mean_bank_all,gt_variance_bank=variance_bank_all)
-
-                loss = mean_loss + var_loss
+                
+                loss = mean_loss + var_loss+  attn_loss
                 loss = loss.float()
-
+                
                 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
                 
-                 # Backpropagate
+                    # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)

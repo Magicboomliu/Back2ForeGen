@@ -1080,6 +1080,7 @@ class StableDiffusionReferencePipeline(
                 if MODE == "write":
                     # save the norm_hidden_states
                     self.bank.append(norm_hidden_states.detach().clone())
+                    
                     attn_output = self.attn1(
                         norm_hidden_states,
                         encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
@@ -1466,6 +1467,8 @@ class StableDiffusionReferencePipeline(
                     cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )
+                
+                quit()
 
                 # predict the noise residual
                 MODE = "read"
