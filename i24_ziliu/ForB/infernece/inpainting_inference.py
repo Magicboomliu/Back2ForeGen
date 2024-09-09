@@ -6,7 +6,8 @@ import sys
 sys.path.append("../..")
 from PIL import Image
 # from ForB.pipelines.SD_AdaIN import StableDiffusionReferencePipeline
-from ForB.pipelines.SD_AdaIN_Inpainting import StableDiffusionReferenceInpaintingPipeline
+# from ForB.pipelines.SD_AdaIN_Inpainting import StableDiffusionReferenceInpaintingPipeline
+from ForB.pipelines.SD_AdaIN_Attn_Inpainting import StableDiffusionReferenceInpaintingPipeline
 from ForB.dataloader.utils.file_io import read_img,read_mask,resize_image,get_resize_foreground_and_mask
 from ForB.dataloader.utils.utils import read_text_lines,get_id_and_prompt
 import numpy as np
@@ -44,8 +45,8 @@ def resize_image(image,size,is_mask):
     return resized_image, original_shape
 
 
-image_path = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset/CrossDomainData/real_world/images/real_image.jpg"
-background_mask = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset/CrossDomainData/real_world/bg_masks/real_image.jpg"
+image_path = "/data1/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/Flat2D/images/11.png"
+background_mask ="/data1/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/Flat2D/bg_mask_v1/11.png"
 
 # original image PIL and original Background Image PIL
 input_image= Image.open(image_path).convert("RGB")
@@ -80,13 +81,13 @@ fg_image = fg_image.astype(np.uint8)
 fg_image = Image.fromarray(fg_image)
 
 
-pipe = StableDiffusionReferenceInpaintingPipeline.from_single_file("/mnt/nfs-mnj-home-43/i24_ziliu/pretrained_models/sd15_anime.safetensors",
+pipe = StableDiffusionReferenceInpaintingPipeline.from_single_file("/home/zliu/PFN/pretrained_models/base_models/sd15_anime.safetensors",
                                             torch_dtype=torch.float16).to('cuda:0')
 # which Scheduler shall we use 
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
 # UPDATE
-pretrained_vae = AutoencoderKL.from_single_file(pretrained_model_link_or_path_or_dict="/mnt/nfs-mnj-home-43/i24_ziliu/pretrained_models/pretrained_VAE/vae-ft-mse-840000-ema-pruned_fp16.safetensors")
+pretrained_vae = AutoencoderKL.from_single_file(pretrained_model_link_or_path_or_dict="/home/zliu/PFN/pretrained_models/VAEs/vae-ft-mse-840000-ema-pruned_fp16.safetensors")
 pipe.vae = pretrained_vae # update the VAE
 pipe.vae = pipe.vae.half()
 pipe = pipe.to("cuda:0")
@@ -96,12 +97,12 @@ pipe = pipe.to("cuda:0")
 result_img = pipe(ref_image=fg_image,
       original_image = resize_input_image_pil,
       original_foreground_mask=fg_mask_np,
-      prompt="a man in a suit standing in front of the Tokyo Tower.",
+      prompt="A girl with butterscotch blonde hair and burnt orange eyes in a denim skirt is exploring the narrow streets in Santorini, Greece.",
       num_inference_steps=50,
       reference_attn=True,
       reference_adain=False,
       fg_mask=fg_mask,
-      use_converter=False).images[0]
+      use_converter=True).images[0]
 
 
 
@@ -109,4 +110,4 @@ initial_fg_image = initial_fg_image.resize(origianl_size)
 initial_fg_image.save("input.png")
 saved_input.save("origin.png")
 result_img = result_img.resize(origianl_size)
-result_img.save("result_attn.png")
+result_img.save("ours_attn.png")

@@ -54,6 +54,11 @@ class AggregationNet(nn.Module):
         text_feat = self.text_proj(text_embed)
         time_feat = self.time_proj(time_embed).unsqueeze(1)
         
+        if time_feat.shape[0]!=text_embed.shape[0]:
+            time_feat = time_feat.repeat(text_feat.shape[0],1,1)
+            time_feat = time_feat[:text_feat.shape[0],:,:]
+    
+        
         conditional_prompt = torch.cat((text_feat,time_feat),dim=1).view(time_feat.shape[0],-1)
         prompt_feat = self.fusion_layer(conditional_prompt).unsqueeze(1)
         
