@@ -100,9 +100,10 @@ result_img = pipe(ref_image=fg_image,
       prompt="A girl with butterscotch blonde hair and burnt orange eyes in a denim skirt is exploring the narrow streets in Santorini, Greece.",
       num_inference_steps=50,
       reference_attn=True,
-      reference_adain=False,
+      reference_adain=True,
       fg_mask=fg_mask,
-      use_converter=True).images[0]
+      use_converter=False,
+      pretrained_model_path="/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_learnable_VAE_With_Attn/ckpt_8001.pt").images[0]
 
 
 
@@ -110,4 +111,4 @@ initial_fg_image = initial_fg_image.resize(origianl_size)
 initial_fg_image.save("input.png")
 saved_input.save("origin.png")
 result_img = result_img.resize(origianl_size)
-result_img.save("ours_attn.png")
+result_img.save("off_attn_adin.png")
