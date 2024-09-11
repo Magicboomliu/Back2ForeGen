@@ -72,6 +72,9 @@ from ForB.networks.learnable_reference_only import ConverterNetwork
 from ForB.losses.layer_wise_l1_loss import LayerWise_L1_Loss
 from ForB.losses.attn_loss import Attn_loss
 
+# PLT 
+import matplotlib.pyplot as plt
+
 
 
 def parse_args():
@@ -599,6 +602,9 @@ def main():
         
         converter_network = ConverterNetwork()
 
+    # ckpt = torch.load("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_with_attn_and_adaIN/ckpt_4001.pt")
+    # converter_network.load_state_dict(ckpt["model_state"])
+    # logger.info("Load Pretrained Weight at {}".format("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_with_attn_and_adaIN/ckpt_4001.pt"),main_process_only=True)
 
     # Freeze vae and text_encoder and set unet to trainable.
     vae.requires_grad_(False)
@@ -789,8 +795,12 @@ def main():
                 fg_image = image_normalization(fg_image)
                 
                 
+                # mask images for additional information.
+                masked_image = image * fg_mask
+                #masked_image = fg_image
+                masked_for_concated = F.interpolate(fg_mask,scale_factor=1./8,
+                                mode='nearest')
                 
-            
                 
                 
                 '''Encode Image-All Here: The Name is latent'''
@@ -807,13 +817,18 @@ def main():
                 fore_moments_rgb = vae.quant_conv(fore_h_rgb)
                 fore_mean_rgb, fore_logvar_rgb = torch.chunk(fore_moments_rgb, 2, dim=1)
                 fore_latents = fore_mean_rgb * rgb_latent_scale_factor #torch.Size([1, 4, 64, 64])
-                foreground_latents_mask = F.interpolate(fg_mask,scale_factor=1./8,
-                                mode='nearest')
-                foreground_latents_mask = torch.clamp(foreground_latents_mask,min=0,max=1.0) #torch.Size([1, 1, 64, 64])
                 
-                masked_for_concated = foreground_latents_mask
-                masked_lantents = fore_latents
-
+                
+                
+                '''Encode the Masked Latents'''
+                masked_image_h_rgb = vae.encoder(masked_image.to(weight_dtype))
+                masked_image_moments_rgb = vae.quant_conv(masked_image_h_rgb)
+                masked_image_mean_rgb, masked_image_logvar_rgb = torch.chunk(masked_image_moments_rgb, 2, dim=1)
+                masked_image_latents = masked_image_mean_rgb * rgb_latent_scale_factor #torch.Size([1, 4, 64, 64])
+                
+                
+                
+            
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 if args.noise_offset:
@@ -1139,7 +1154,7 @@ def main():
                 # infernece view input
                 
                 
-                unet_input = torch.cat([fore_latents, masked_for_concated, masked_lantents], dim=1)
+                unet_input = torch.cat([fore_latents, masked_for_concated, masked_image_latents], dim=1)
                 # write the current rf-attentions into forward functions.
                 MODE = "write"
                 unet(
@@ -1148,6 +1163,7 @@ def main():
                     encoder_hidden_states=encoder_hidden_states,
                     return_dict=False,
                 )
+                
                 # get all the feature banks / mean banks/ feature banks
                 mean_bank_fore,variance_bank_fore,feature_bank_fore = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 t_embed = position_encoding(timesteps,device=encoder_hidden_states.device)
@@ -1167,11 +1183,9 @@ def main():
                                 )
                 
                 
-                
-                
                 # Target
                 # reference latents
-                reference_unet_input = torch.cat([noisy_latents, masked_for_concated, masked_lantents], dim=1)
+                reference_unet_input = torch.cat([noisy_latents, masked_for_concated, masked_image_latents], dim=1)
                 
                 noise_pred = unet(
                     reference_unet_input,
@@ -1179,18 +1193,16 @@ def main():
                     encoder_hidden_states=prompt_embeds,
                     return_dict=False,
                 )[0]
-                mean_bank_all,variance_bank_all,feature_bank_all = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 
-            
+                mean_bank_all,variance_bank_all,feature_bank_all = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 all_attn_banks = get_all_attn_states(attn_modules)
                 all_attn_banks_list = [fg[0] for fg in all_attn_banks]
-                attn_loss = Attn_loss(converted_fg_attn_banks_list,all_attn_banks_list)
                 
-
-                # est_mean_bank,est_variance_bank,gt_mean_bank,gt_variance_bank
+                
+                # Loss Functions
+                attn_loss = Attn_loss(converted_fg_attn_banks_list,all_attn_banks_list)
                 mean_loss,var_loss = LayerWise_L1_Loss(est_mean_bank=fg2all_mean_bank,est_variance_bank=fg2all_variance_bank,
                                     gt_mean_bank=mean_bank_all,gt_variance_bank=variance_bank_all)
-                
                 loss = mean_loss + var_loss+  attn_loss
                 loss = loss.float()
                 

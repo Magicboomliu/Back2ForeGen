@@ -35,11 +35,13 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline,StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-
-
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import sys
+sys.path.append("../../..")
+from ForB.networks.learnable_reference_only import ConverterNetwork
+import matplotlib.pyplot as plt
 
 
 def torch_dfs(model: torch.nn.Module):
@@ -58,9 +60,167 @@ def torch_dfs(model: torch.nn.Module):
     return result
 
 
+# get all_mean and var
+def get_all_mean_and_var_and_hidden_states(gn_modules):
+    all_mean = dict()
+    all_std = dict()
+    all_hidden_states = dict()
+
+    for i, module in enumerate(gn_modules):
+        if getattr(module, "original_forward", None) is None:
+            module.original_forward = module.forward
+        
+        if i == 0:
+            # mid_block
+            all_mean[('mid_block',i)] = module.mean_bank
+            all_std[('mid_block',i)] = module.var_bank
+            all_hidden_states[('mid_block',i)] = module.feature_bank
+            module.mean_bank = []
+            module.var_bank = []
+            module.feature_bank = []
+
+
+        elif isinstance(module, CrossAttnDownBlock2D):
+            all_mean[('CrossAttnDownBlock2D',i)] = module.mean_bank
+            all_std[('CrossAttnDownBlock2D',i)] = module.var_bank
+            all_hidden_states[('CrossAttnDownBlock2D',i)] = module.feature_bank
+            module.mean_bank = []
+            module.var_bank = []
+            module.feature_bank = []
+
+        elif isinstance(module, DownBlock2D):
+            all_mean[('DownBlock2D',i)] = module.mean_bank
+            all_std[('DownBlock2D',i)] = module.var_bank
+            all_hidden_states[('DownBlock2D',i)] = module.feature_bank
+            module.mean_bank = []
+            module.var_bank = []
+            module.feature_bank = []
+
+        elif isinstance(module, CrossAttnUpBlock2D):
+            all_mean[('CrossAttnUpBlock2D',i)] = module.mean_bank
+            all_std[('CrossAttnUpBlock2D',i)] = module.var_bank
+            all_hidden_states[('CrossAttnUpBlock2D',i)] = module.feature_bank
+            module.mean_bank = []
+            module.var_bank = []
+            module.feature_bank = []
+
+        elif isinstance(module, UpBlock2D):
+            all_mean[('UpBlock2D',i)] = module.mean_bank
+            all_std[('UpBlock2D',i)] = module.var_bank
+            all_hidden_states[('UpBlock2D',i)] = module.feature_bank
+            module.mean_bank = []
+            module.var_bank = []
+            module.feature_bank = []
+
+    return all_mean,all_std,all_hidden_states
+
+def position_encoding(num, d_model=512, device='cuda:0'):
+    position = torch.arange(0, d_model, device=device).float().unsqueeze(0)
+    angle_rates = 1 / torch.pow(10000, (2 * (position // 2)) / d_model)
+    angle_rads = num * angle_rates
+    sines = torch.sin(angle_rads[:, 0::2])
+    cosines = torch.cos(angle_rads[:, 1::2])
+    pos_encoding = torch.zeros(angle_rads.shape, device=device)
+    pos_encoding[:, 0::2] = sines
+    pos_encoding[:, 1::2] = cosines
+    return pos_encoding
+
+def update_mean_and_variane(gn_modules,new_mean_bank,new_var_bank):
+    for i, module in enumerate(gn_modules):
+        if getattr(module, "original_forward", None) is None:
+            module.original_forward = module.forward
+        
+        if i == 0:
+            # mid_block
+            module.mean_bank = new_mean_bank[('mid_block',i)]
+            module.var_bank = new_var_bank[('mid_block',i)]
+            
+            module.feature_bank = []
+
+        elif isinstance(module, CrossAttnDownBlock2D):
+
+            module.mean_bank = new_mean_bank[('CrossAttnDownBlock2D',i)]
+            module.var_bank = new_var_bank[('CrossAttnDownBlock2D',i)]
+            module.feature_bank = []
+
+
+        elif isinstance(module, DownBlock2D):
+            module.mean_bank = new_mean_bank[('DownBlock2D',i)]
+            module.var_bank = new_var_bank[('DownBlock2D',i)]
+            module.feature_bank = []
+
+        elif isinstance(module, CrossAttnUpBlock2D):
+            module.mean_bank = new_mean_bank[('CrossAttnUpBlock2D',i)]
+            module.var_bank = new_var_bank[('CrossAttnUpBlock2D',i)]
+            module.feature_bank = []
+
+        elif isinstance(module, UpBlock2D):
+            module.mean_bank = new_mean_bank[('UpBlock2D',i)]
+            module.var_bank = new_var_bank[('UpBlock2D',i)]
+            module.feature_bank = []
+# pass
+def update_mean_and_variane_gn_auto(gn_modules,new_mean_bank,new_var_bank):
+    for i, module in enumerate(gn_modules):
+        if getattr(module, "original_forward", None) is None:
+            module.original_forward = module.forward
+        
+        if i == 0:
+            # mid_block
+            module.mean_bank = new_mean_bank[('mid_block',i)]
+            module.var_bank = new_var_bank[('mid_block',i)]
+            
+            module.feature_bank = []
+
+
+        elif isinstance(module, CrossAttnDownBlock2D):
+            if i==1 or i==2:
+                module.mean_bank = []
+                module.var_bank =[]
+                module.feature_bank = []
+            
+            else:
+                module.mean_bank = new_mean_bank[('CrossAttnDownBlock2D',i)]
+                module.var_bank = new_var_bank[('CrossAttnDownBlock2D',i)]
+                module.feature_bank = []
+
+
+        elif isinstance(module, DownBlock2D):
+            module.mean_bank = new_mean_bank[('DownBlock2D',i)]
+            module.var_bank = new_var_bank[('DownBlock2D',i)]
+            module.feature_bank = []
+
+        elif isinstance(module, CrossAttnUpBlock2D):
+            if i==8:
+                module.mean_bank = []
+                module.var_bank =[]
+                module.feature_bank = []
+            else:
+                module.mean_bank = new_mean_bank[('CrossAttnUpBlock2D',i)]
+                module.var_bank = new_var_bank[('CrossAttnUpBlock2D',i)]
+                module.feature_bank = []
+
+        elif isinstance(module, UpBlock2D):
+            module.mean_bank = new_mean_bank[('UpBlock2D',i)]
+            module.var_bank = new_var_bank[('UpBlock2D',i)]
+            module.feature_bank = []
+
+def get_all_attn_states(attn_modules):    
+    all_attn_banks = []
+    for i, module in enumerate(attn_modules):
+        all_attn_banks.append(module.attn_bank)
+        module.attn_bank = []
+    
+    return all_attn_banks
+
+def update_all_attn_states(attn_modules,attn_list):
+    for i, module in enumerate(attn_modules):
+        module.attn_bank = []
+        module.attn_bank = [attn_list[i]*1.0]
+
+
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
     """
@@ -183,7 +343,6 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
 
     return mask, masked_image
 
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -196,7 +355,6 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
-
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -891,6 +1049,7 @@ class StableDiffusionInpaintPipeline(
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
+            #image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
         image_latents = self.vae.config.scaling_factor * image_latents
@@ -1138,6 +1297,76 @@ class StableDiffusionInpaintPipeline(
         return ref_image_latents
 
 
+    # This is the main 
+    def prepare_ref_latentsV2(
+        self,
+        refimage: torch.Tensor,
+        batch_size: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Union[int, List[int]],
+        do_classifier_free_guidance: bool,
+    ) -> torch.Tensor:
+        r"""
+        Prepares reference latents for generating images.
+
+        Args:
+            refimage (torch.Tensor): The reference image.
+            batch_size (int): The desired batch size.
+            dtype (torch.dtype): The data type of the tensors.
+            device (torch.device): The device to perform computations on.
+            generator (int or list): The generator index or a list of generator indices.
+            do_classifier_free_guidance (bool): Whether to use classifier-free guidance.
+
+        Returns:
+            torch.Tensor: The prepared reference latents.
+        """
+        refimage = refimage.to(device=device, dtype=dtype)
+
+        # encode the mask image into latents space so we can concatenate it to the latents
+        if isinstance(generator, list):
+            ref_image_latents = [
+                self.vae.encode(refimage[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(batch_size)
+            ]
+            ref_image_latents = torch.cat(ref_image_latents, dim=0)
+        else:
+            h_rgb = self.vae.encoder(refimage)
+            moments_rgb = self.vae.quant_conv(h_rgb)
+            mean_rgb, logvar_rgb = torch.chunk(moments_rgb, 2, dim=1)
+            ref_image_latents = mean_rgb *self.vae.config.scaling_factor
+            
+
+        #     ref_image_latents = self.vae.encode(refimage).latent_dist.sample(generator=generator)
+        # ref_image_latents = self.vae.config.scaling_factor * ref_image_latents
+
+        # duplicate mask and ref_image_latents for each generation per prompt, using mps friendly method
+        if ref_image_latents.shape[0] < batch_size:
+            if not batch_size % ref_image_latents.shape[0] == 0:
+                raise ValueError(
+                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
+                    f" to a total batch size of {batch_size}, but {ref_image_latents.shape[0]} images were passed."
+                    " Make sure the number of images that you pass is divisible by the total requested batch size."
+                )
+            ref_image_latents = ref_image_latents.repeat(batch_size // ref_image_latents.shape[0], 1, 1, 1)
+
+        # aligning device to prevent device errors when concating it with the latent model input
+        ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
+        return ref_image_latents
+
+
+
+
+    # load the converter here
+    
+    def _load_pretrained_converter(self,pretrained_path):
+        
+        # loaded the pretrained models.
+        saved_contents = torch.load(pretrained_path)
+        self.converter_network = ConverterNetwork()
+        self.converter_network.load_state_dict(saved_contents["model_state"])
+        self.converter_network.cuda()
+        self.converter_network.half()
 
     @torch.no_grad()
     def __call__(
@@ -1173,6 +1402,9 @@ class StableDiffusionInpaintPipeline(
         style_fidelity: float = 0.5,
         reference_attn: bool = True,
         reference_adain: bool = True,
+        use_converter=False,
+        pretrained_model_path=None,
+        fg_mask = None,
 
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
@@ -1316,6 +1548,11 @@ class StableDiffusionInpaintPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+        
+        fg_mask = torch.from_numpy(fg_mask) # (H,W,1)
+        fg_mask = fg_mask.permute(2,0,1).unsqueeze(0)
+        fg_mask = fg_mask.float()
+        fg_mask = fg_mask.cuda()
 
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
@@ -1339,6 +1576,15 @@ class StableDiffusionInpaintPipeline(
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+        
+        
+        
+        if use_converter:
+            self._load_pretrained_converter(pretrained_model_path)
+            print("Loaded the Pretrained Converter Successfully....")
+        
+        
+
 
         # 1. Check inputs
         self.check_inputs(
@@ -1431,11 +1677,22 @@ class StableDiffusionInpaintPipeline(
             crops_coords = None
             resize_mode = "default"
 
-        original_image = image
+
+        # init_image = self.prepare_image(image=image,
+        #     width=width,
+        #     height=height,
+        #     batch_size=batch_size * num_images_per_prompt,
+        #     num_images_per_prompt=num_images_per_prompt,
+        #     device=device,
+        #     dtype=prompt_embeds.dtype)
+        
         init_image = self.image_processor.preprocess(
             image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
         )
+        
         init_image = init_image.to(dtype=torch.float32)
+
+
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -1478,6 +1735,8 @@ class StableDiffusionInpaintPipeline(
             num_images_per_prompt=num_images_per_prompt,
             device=device,
             dtype=prompt_embeds.dtype)
+        
+
 
         ref_image_latents = self.prepare_ref_latents(
             ref_image,
@@ -1487,13 +1746,23 @@ class StableDiffusionInpaintPipeline(
             generator,
             self.do_classifier_free_guidance,
         ) #[1,4,H/8,W/8]
-        
 
+        
+        
+        
+        
         if masked_image_latents is None:
-            masked_image = init_image * (mask_condition < 0.5)
+            # must be zero
+            # masked_image = ((init_image+1)/2) * (mask_condition < 0.5).to(init_image.device)
+            # masked_image = masked_image*2 -1
+                
+            masked_image = (init_image) * (mask_condition < 0.5).to(init_image.device)
+            masked_image = masked_image.type_as(ref_image)
         else:
             masked_image = masked_image_latents
-
+        
+        
+        # masked_image = ref_image
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
             masked_image,
@@ -1505,6 +1774,9 @@ class StableDiffusionInpaintPipeline(
             generator,
             self.do_classifier_free_guidance,
         )
+
+
+
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
@@ -1561,6 +1833,7 @@ class StableDiffusionInpaintPipeline(
                 )
             else:
                 norm_hidden_states = self.norm1(hidden_states)
+
             # 1. Self-Attention
             cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
             if self.only_cross_attention:
@@ -1575,7 +1848,6 @@ class StableDiffusionInpaintPipeline(
                 
                 # when writing, without text prmpt
                 if MODE == "write":
-                    # save the norm_hidden_states
                     self.attn_bank.append(norm_hidden_states.detach().clone())
                     attn_output = self.attn1(
                         norm_hidden_states,
@@ -1583,13 +1855,15 @@ class StableDiffusionInpaintPipeline(
                         attention_mask=attention_mask,
                         **cross_attention_kwargs,
                     )
+
+
                 if MODE == "read":
-                    # do the addition when 
+                    # maybe alayws true: just add the
                     if attention_auto_machine_weight > self.attn_weight:
                         attn_output_uc = self.attn1(
                             norm_hidden_states,
                             encoder_hidden_states=torch.cat([norm_hidden_states] + self.attn_bank, dim=1),
-                            #encoder_hidden_states=torch.cat([norm_hidden_states], dim=1),
+                            # encoder_hidden_states=torch.cat([norm_hidden_states], dim=1),
                             # attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
@@ -1619,6 +1893,7 @@ class StableDiffusionInpaintPipeline(
             
             # update hidden state
             hidden_states = attn_output + hidden_states
+
             if self.attn2 is not None:
                 norm_hidden_states = (
                     self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
@@ -1635,10 +1910,12 @@ class StableDiffusionInpaintPipeline(
 
             # 3. Feed-forward
             norm_hidden_states = self.norm3(hidden_states)
+
             if self.use_ada_layer_norm_zero:
                 norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
             ff_output = self.ff(norm_hidden_states)
+
             if self.use_ada_layer_norm_zero:
                 ff_output = gate_mlp.unsqueeze(1) * ff_output
 
@@ -1654,6 +1931,7 @@ class StableDiffusionInpaintPipeline(
                     var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
                     self.mean_bank.append(mean)
                     self.var_bank.append(var)
+                    self.feature_bank.append(x)
             if MODE == "read":
                 if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                     var, mean = torch.var_mean(x, dim=(2, 3), keepdim=True, correction=0)
@@ -1698,6 +1976,7 @@ class StableDiffusionInpaintPipeline(
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
+                        self.feature_bank.append([hidden_states])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -1742,6 +2021,7 @@ class StableDiffusionInpaintPipeline(
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
+                        self.feature_bank.append([hidden_states])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -1801,6 +2081,7 @@ class StableDiffusionInpaintPipeline(
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
+                        self.feature_bank.append([hidden_states])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -1844,6 +2125,7 @@ class StableDiffusionInpaintPipeline(
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
                         self.mean_bank.append([mean])
                         self.var_bank.append([var])
+                        self.feature_bank.append([hidden_states])
                 if MODE == "read":
                     if len(self.mean_bank) > 0 and len(self.var_bank) > 0:
                         var, mean = torch.var_mean(hidden_states, dim=(2, 3), keepdim=True, correction=0)
@@ -1868,7 +2150,6 @@ class StableDiffusionInpaintPipeline(
             return hidden_states
 
 
-
         # Attn  for the target view
         if reference_attn:
             attn_modules = [module for module in torch_dfs(self.unet) if isinstance(module, BasicTransformerBlock)]
@@ -1879,7 +2160,6 @@ class StableDiffusionInpaintPipeline(
                 module.forward = hacked_basic_transformer_inner_forward.__get__(module, BasicTransformerBlock)
                 module.attn_bank = []
                 module.attn_weight = float(i) / float(len(attn_modules))
-
 
         if reference_adain:
             gn_modules = [self.unet.mid_block]
@@ -1913,6 +2193,7 @@ class StableDiffusionInpaintPipeline(
                     
                 module.mean_bank = []
                 module.var_bank = []
+                module.feature_bank = []
                 module.gn_weight *= 2
 
         # 9.2 Optionally get Guidance Scale Embedding
@@ -1926,10 +2207,9 @@ class StableDiffusionInpaintPipeline(
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        
-        
-        # middle staet hiddens 
-        
+
+
+                
         
         middle_state_hidden_list = []
         
@@ -1937,7 +2217,6 @@ class StableDiffusionInpaintPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # concat latents, mask, masked_image_latents in the channel dimension
@@ -1956,9 +2235,16 @@ class StableDiffusionInpaintPipeline(
                 )
                 ref_xt = torch.cat([ref_xt] * 2) if self.do_classifier_free_guidance else ref_xt
                 ref_xt = self.scheduler.scale_model_input(ref_xt, t)  # already two, but all contains.
+                #latent_model_input_for_reference = torch.cat([ref_xt, mask, masked_image_latents], dim=1)
+                
                 latent_model_input_for_reference = torch.cat([ref_xt, mask, masked_image_latents], dim=1)
                 
-                MODE = "write"
+            
+            
+                MODE = "write"    
+                if use_converter and MODE=='write':
+                    gn_auto_machine_weight = 1000
+                    
                 self.unet(
                     latent_model_input_for_reference,
                     t,
@@ -1968,8 +2254,78 @@ class StableDiffusionInpaintPipeline(
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
+
+                if use_converter:
+                    # get input information
+                    if reference_adain:
+                        mean_bank_fore,variance_bank_fore,feature_bank_fore = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
+                    
+                    if reference_attn:
+                        fg_attn_banks = get_all_attn_states(attn_modules)
+                        fg_attn_banks_list = [fg[0] for fg in fg_attn_banks]
+
+                t_embed = position_encoding(t)
+                # t_embed = t_embed.repeat(2,1)
+                t_embed = t_embed.half()
+                fg_mask = fg_mask.half()
+                fg_mask = fg_mask[0:1,:,:,:]
+                t_embed = t_embed[0:1,:]
+                # use the network here
+                if self.do_classifier_free_guidance:
+                    fg_mask  = fg_mask.repeat(2,1,1,1)
                 
-                
+
+                    if use_converter:
+                        if reference_adain and not reference_attn:
+                            fg_attn_banks_list = None
+                            fg2all_mean_bank, fg2all_variance_bank,converted_fg_attn_banks_list = self.converter_network(mean_bank = mean_bank_fore,
+                                            var_bank=variance_bank_fore,
+                                            feat_bank=feature_bank_fore,
+                                            time_embed=t_embed,
+                                            text_embed=prompt_embeds,
+                                            foreground_mask=fg_mask,
+                                            inputs = fg_attn_banks_list,
+                                            use_seperate = 'adaIN'
+                                            )
+                        if reference_attn and not reference_adain:
+                            variance_bank_fore = None
+                            feature_bank_fore = None
+                            mean_bank_fore = None
+                            
+                            fg2all_mean_bank, fg2all_variance_bank,converted_fg_attn_banks_list = self.converter_network(mean_bank = mean_bank_fore,
+                                            var_bank=variance_bank_fore,
+                                            feat_bank=feature_bank_fore,
+                                            time_embed=t_embed,
+                                            text_embed=prompt_embeds,
+                                            foreground_mask=fg_mask,
+                                            inputs = fg_attn_banks_list,
+                                            use_seperate = 'attn'
+                                            )
+                        if reference_adain and reference_attn:
+                            
+                            fg2all_mean_bank, fg2all_variance_bank,converted_fg_attn_banks_list = self.converter_network(mean_bank = mean_bank_fore,
+                                            var_bank=variance_bank_fore,
+                                            feat_bank=feature_bank_fore,
+                                            time_embed=t_embed,
+                                            text_embed=prompt_embeds,
+                                            foreground_mask=fg_mask,
+                                            inputs = fg_attn_banks_list,
+                                            use_seperate = 'all'
+                                            )
+
+                    
+                    if use_converter:
+                        if reference_adain:
+                            update_mean_and_variane_gn_auto(gn_modules=gn_modules,new_mean_bank=fg2all_mean_bank,
+                                                    new_var_bank=fg2all_variance_bank)
+                        
+                        
+                        if reference_attn:
+                            update_all_attn_states(attn_modules=attn_modules,attn_list=converted_fg_attn_banks_list)
+                            
+                if use_converter and MODE=='read':
+                    gn_auto_machine_weight = 1.0
+                    
                         
                 MODE = "read"
                 noise_pred = self.unet(

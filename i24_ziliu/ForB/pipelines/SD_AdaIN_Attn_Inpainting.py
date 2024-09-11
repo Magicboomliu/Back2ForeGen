@@ -1611,6 +1611,9 @@ class StableDiffusionReferenceInpaintingPipeline(
 
             return hidden_states
 
+
+
+
         if reference_attn:
             #使用 torch_dfs 函数（深度优先搜索，可能是用户自定义的递归函数）遍历模型中的所有模块，
             # 查找类型为 BasicTransformerBlock 的模块，并将它们存储在 attn_modules 列表中。

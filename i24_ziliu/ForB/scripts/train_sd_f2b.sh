@@ -134,7 +134,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch --mixed_precision="fp16"  sd_gen_
 
 
 
-
 TRAIN_SD15_Inpainting_F2B_Mix_with_Attn_And_AdaIN(){
 cd ..
 cd trainer/
@@ -145,8 +144,8 @@ dataset_name="Mixed_Dataset"
 dataset_path="/data1/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/"
 trainlist="/home/zliu/PFN/PFN24/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
 vallist="/home/zliu/PFN/PFN24/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
-output_dir="../outputs/$dataset_name/sd15_inpainting_with_attn_and_adaIN"
-seed=100
+output_dir="../outputs/$dataset_name/sd15_inpainting_with_attn_and_adaIN_revised"
+seed=70
 train_batch_size=1
 num_train_epochs=100
 gradient_accumulation_steps=16
