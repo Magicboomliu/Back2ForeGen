@@ -52,7 +52,7 @@ if __name__=="__main__":
     
     inference_type_list = ["off_adaIN",'off_attn',"off_attn_adaIN","off_inpainting","ours_attn","ours_adaIN","ous_attn_adaIN"]
     
-    inference_type = 'off_inpainting'
+    inference_type = 'off_adaIN'
     
     if inference_type=='off_inpainting':
         use_converter = False
@@ -266,13 +266,13 @@ if __name__=="__main__":
         fg_image = Image.fromarray(fg_image)
         
 
-        # initial foreground image
-        initial_fg_image = initial_fg_image.resize(origianl_size)
-        initial_fg_image.save(os.path.join(saved_images_folder_specific_folder,os.path.basename(image_path)))
-        # save original images
-        saved_input.save(os.path.join(saved_original_images_folder_specific_folder,os.path.basename(image_path)))
-        # saved bg mask
-        original_bg_mask.save(os.path.join(saved_bg_images_folder_specific_folder,os.path.basename(image_path)))
+        # # initial foreground image
+        # initial_fg_image = initial_fg_image.resize(origianl_size)
+        # initial_fg_image.save(os.path.join(saved_images_folder_specific_folder,os.path.basename(image_path)))
+        # # save original images
+        # saved_input.save(os.path.join(saved_original_images_folder_specific_folder,os.path.basename(image_path)))
+        # # saved bg mask
+        # original_bg_mask.save(os.path.join(saved_bg_images_folder_specific_folder,os.path.basename(image_path)))
         
         
         with torch.no_grad():
@@ -280,12 +280,12 @@ if __name__=="__main__":
             without_noise_model = "/home/zliu/PFN/pretrained_models/Converter/Mix_Inpainting/ckpt_11001.pt"
     
 
-            result = pipe(full_image=input_image,prompt=descriptions,fg_image= fg_image,fg_mask=fg_mask_np,
+            result = pipe(full_image=input_image,prompt=[descriptions],fg_image= fg_image,fg_mask=fg_mask_np,
                 pretrained_converter_path = without_noise_model,
                 use_converter=use_converter,
                 use_adaIN=use_adaIN,
                 use_attn=use_attn,
-                gudiance_score=10,
+                gudiance_score=7.5,
                 attn_weight=0.1)
 
             if inference_type=='off_inpainting':

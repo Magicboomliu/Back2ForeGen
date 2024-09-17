@@ -685,7 +685,8 @@ class PFN_AdaIN_Inpainting_SD_Pipeline(
                                                               text_encoder=self.text_encoder,
                                                               unet=self.unet)
         
-        noise_scheduler.config.prediction_type = "epsilon"
+        self.scheduler.config.prediction_type = "epsilon"
+        #noise_scheduler.config.prediction_type = "epsilon"
         
         
         if gudiance_score>1:
@@ -1210,10 +1211,10 @@ class PFN_AdaIN_Inpainting_SD_Pipeline(
         for i, t in iterable:
             
             if use_adaIN or use_attn:    
-                noisy_latents = noise_scheduler.add_noise(full_image_latents, noise, t)
+                noisy_latents = self.scheduler.add_noise(full_image_latents, noise, t)
                 
                 if not use_converter:
-                    fore_latents_for_input = noise_scheduler.add_noise(fore_latents, noise, t)
+                    fore_latents_for_input = self.scheduler.add_noise(fore_latents, noise, t)
                 else:
                     fore_latents_for_input = fore_latents
                     

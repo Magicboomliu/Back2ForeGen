@@ -75,6 +75,8 @@ from ForB.losses.attn_loss import Attn_loss
 # PLT 
 import matplotlib.pyplot as plt
 
+from AvergeMeter import AverageMeter
+
 
 
 def parse_args():
@@ -433,6 +435,7 @@ def encode_prompt(prompt,negative_prompt,device,prompt_embeds=None,do_classifier
         seq_len = negative_prompt_embeds.shape[1]
 
         negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+
         negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
         negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -601,7 +604,7 @@ def main():
         
         converter_network = ConverterNetwork()
 
-    # ckpt = torch.load("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_with_attn_and_adaIN/ckpt_4001.pt")
+    # ckpt = torch.load("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_single/ckpt_10001.pt")
     # converter_network.load_state_dict(ckpt["model_state"])
     # logger.info("Load Pretrained Weight at {}".format("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_with_attn_and_adaIN/ckpt_4001.pt"),main_process_only=True)
 
@@ -670,7 +673,30 @@ def main():
                 target_resolution=(512,512),
                 use_foreground=True)
         logger.info("Loaded the DataLoader....") # only the main process show the logs
-
+        
+        # 0-100
+        noise_level_1_meter = AverageMeter()
+        # 100-200
+        noise_level_2_meter = AverageMeter()
+        # 200-300
+        noise_level_3_meter = AverageMeter()
+        # 300-400
+        noise_level_4_meter = AverageMeter()
+        # 400-500
+        noise_level_5_meter = AverageMeter()
+        # 500-600
+        noise_level_6_meter = AverageMeter()
+        # 600-700
+        noise_level_7_meter = AverageMeter()
+        # 700-800
+        noise_level_8_meter = AverageMeter()
+        # 800-900
+        noise_level_9_meter = AverageMeter()
+        # 900-1000
+        noise_level_10_meter = AverageMeter()
+        
+        
+        
 
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
@@ -719,7 +745,13 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        accelerator.init_trackers(args.tracker_project_name, tracker_config)
+        #accelerator.init_trackers(args.tracker_project_name, tracker_config)
+    
+        accelerator.init_trackers(
+            project_name="SD15",
+            config=tracker_config,
+            init_kwargs={"wandb": {"entity": "liuzihua1004",'name':"test_single"}}
+        )
 
     # Here is the DDP training: actually is 4
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -799,6 +831,7 @@ def main():
                 #masked_image = fg_image
                 masked_for_concated = F.interpolate(fg_mask,scale_factor=1./8,
                                 mode='nearest')
+                masked_for_concated = torch.ones_like(masked_for_concated) - masked_for_concated
                 
                 
                 
@@ -808,6 +841,7 @@ def main():
                 moments_rgb = vae.quant_conv(h_rgb)
                 mean_rgb, logvar_rgb = torch.chunk(moments_rgb, 2, dim=1)
                 latents = mean_rgb *rgb_latent_scale_factor    #torch.Size([1, 4, 64, 64])
+                
 
 
                 '''Encode the Foreground Image Here: The Name is Foreground Latent'''
@@ -841,6 +875,11 @@ def main():
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
+                
+                # timesteps = torch.Tensor([10]).cuda().to(latents.device)
+                # timesteps = timesteps.long()
+                
+                
                 # Add noise to the latents according to the noise magnitude at each timestep
                 if args.input_perturbation:
                     noisy_latents = noise_scheduler.add_noise(latents, new_noise, timesteps)
@@ -853,6 +892,9 @@ def main():
                 encoder_hidden_states = prompt_embeds
                 
                 noise_scheduler.config.prediction_type = "epsilon"
+                
+
+
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -1152,17 +1194,9 @@ def main():
                     
                 # infernece view input
                 
-                # add foreground latents here with noise.
-
-                fore_latents_noisy = noise_scheduler.add_noise(
-                    fore_latents,
-                    noise,
-                    timesteps.reshape(
-                        1,
-                    ),)
-
-                fore_latents_noisy = noise_scheduler.scale_model_input(fore_latents_noisy, timesteps)  # already two, but all contains.
-                unet_input = torch.cat([fore_latents_noisy, masked_for_concated, masked_image_latents], dim=1)
+                
+                unet_input = torch.cat([fore_latents, masked_for_concated, masked_image_latents], dim=1)
+            
                 # write the current rf-attentions into forward functions.
                 MODE = "write"
                 unet(
@@ -1180,6 +1214,9 @@ def main():
                 fg_attn_banks = get_all_attn_states(attn_modules)
                 fg_attn_banks_list = [fg[0] for fg in fg_attn_banks]
 
+
+
+
                 # use the network here
                 fg2all_mean_bank, fg2all_variance_bank,converted_fg_attn_banks_list = converter_network(mean_bank = mean_bank_fore,
                                 var_bank=variance_bank_fore,
@@ -1194,8 +1231,7 @@ def main():
                 # Target
                 # reference latents
                 reference_unet_input = torch.cat([noisy_latents, masked_for_concated, masked_image_latents], dim=1)
-                
-                noise_pred = unet(
+                unet(
                     reference_unet_input,
                     timesteps,
                     encoder_hidden_states=prompt_embeds,
@@ -1205,6 +1241,8 @@ def main():
                 mean_bank_all,variance_bank_all,feature_bank_all = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                 all_attn_banks = get_all_attn_states(attn_modules)
                 all_attn_banks_list = [fg[0] for fg in all_attn_banks]
+
+
                 
                 
                 # Loss Functions
@@ -1230,9 +1268,41 @@ def main():
 
             # currently the EMA is not used.
             if accelerator.sync_gradients:
+                
+                
+                if timesteps>0 and timesteps<100:
+                    noise_level_1_meter.update(loss.data.item(),1)
+                elif timesteps>=100 and timesteps<200:
+                    noise_level_2_meter.update(loss.data.item(),1)
+                elif timesteps>=200 and timesteps<300:
+                    noise_level_3_meter.update(loss.data.item(),1)
+                elif timesteps>=300 and timesteps<400:
+                    noise_level_4_meter.update(loss.data.item(),1)
+                elif timesteps>=400 and timesteps<500:
+                    noise_level_5_meter.update(loss.data.item(),1)
+                elif timesteps>=500 and timesteps<600:
+                    noise_level_6_meter.update(loss.data.item(),1)
+                elif timesteps>=600 and timesteps<700:
+                    noise_level_7_meter.update(loss.data.item(),1)
+                elif timesteps>=700 and timesteps<800:
+                    noise_level_8_meter.update(loss.data.item(),1)
+                elif timesteps>=800 and timesteps<900:
+                    noise_level_9_meter.update(loss.data.item(),1)
+                elif timesteps>=900 and timesteps<1000:
+                    noise_level_10_meter.update(loss.data.item(),1)
+                   
+                
+                
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train_loss": train_loss,"level1_loss(t in [0,100])":noise_level_1_meter.val,
+                                 "level2_loss (t in [100,200])":noise_level_2_meter.val,"level3_loss (t in [200,300])":noise_level_3_meter.val,
+                                 "level4_loss (t in [300,400])":noise_level_4_meter.val,"level5_loss (t in [400,500])":noise_level_5_meter.val,
+                                 "level6_loss (t in [500,600])":noise_level_6_meter.val,
+                                 "level7_loss(t in [600,700])":noise_level_7_meter.val,
+                                 "level8_loss(t in [700,800])":noise_level_8_meter.val,
+                                 "level9_loss(t in [800,900])":noise_level_9_meter.val,
+                                 "level10_loss(t in [900,1000])":noise_level_10_meter.val,}, step=global_step)
                 train_loss = 0.0
 
                 # saving the checkpoints
