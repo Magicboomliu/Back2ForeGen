@@ -433,7 +433,6 @@ def encode_prompt(prompt,negative_prompt,device,prompt_embeds=None,do_classifier
         seq_len = negative_prompt_embeds.shape[1]
 
         negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
         negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
         negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -1153,8 +1152,17 @@ def main():
                     
                 # infernece view input
                 
-                
-                unet_input = torch.cat([fore_latents, masked_for_concated, masked_image_latents], dim=1)
+                # add foreground latents here with noise.
+
+                fore_latents_noisy = noise_scheduler.add_noise(
+                    fore_latents,
+                    noise,
+                    timesteps.reshape(
+                        1,
+                    ),)
+
+                fore_latents_noisy = noise_scheduler.scale_model_input(fore_latents_noisy, timesteps)  # already two, but all contains.
+                unet_input = torch.cat([fore_latents_noisy, masked_for_concated, masked_image_latents], dim=1)
                 # write the current rf-attentions into forward functions.
                 MODE = "write"
                 unet(
