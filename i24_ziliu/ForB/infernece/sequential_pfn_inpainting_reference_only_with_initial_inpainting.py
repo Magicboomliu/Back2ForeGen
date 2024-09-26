@@ -9,8 +9,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 import os
 import sys
 sys.path.append("..")
-from pipelines.PFN_testing_Reference_Only_Pipeline import PFN_Text2Image_Reference_Only_Pipeline
-
+from pipelines.PFN_Inpainting_Reference_Only_Pipeline import PFN_AdaIN_Inpainting_SD_Pipeline
 
 from diffusers import (
     DiffusionPipeline,
@@ -30,8 +29,6 @@ import cv2
 from tqdm import tqdm
 
 import skimage.io 
-
-
 
 def read_text_lines(filepath):
     with open(filepath, 'r') as f:
@@ -55,7 +52,7 @@ if __name__=="__main__":
     
     inference_type_list = ["off_adaIN",'off_attn',"off_attn_adaIN","off_inpainting","ours_attn","ours_adaIN","ous_attn_adaIN"]
     
-    inference_type = 'off_inpainting'
+    inference_type = 'ours_attn'
     
     if inference_type=='off_inpainting':
         use_converter = False
@@ -91,34 +88,28 @@ if __name__=="__main__":
         use_converter = True
         use_adaIN = True
         use_attn = True
+        
     
     root_path = "/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/"
-    saved_path = '../outputs/evaluation_results/text2image_inpaint_pfn'
+    saved_path = '../outputs/evaluation_results/inpainting_pfn_with_initial'
     os.makedirs(saved_path,exist_ok=True)
     
     set_seed(1024)
 
-    base_model_path = "/home/zliu/PFN/pretrained_models/base_models/sd15_anime.safetensors"
-    current_stable_diffusion_model = PFN_Text2Image_Reference_Only_Pipeline.from_single_file(pretrained_model_link_or_path=base_model_path,torch_dtype=torch.float16)
+    base_model_path = "/home/zliu/PFN/pretrained_models/base_models/anything45Inpainting_v10-inpainting.safetensors"
+    current_stable_diffusion_model = PFN_AdaIN_Inpainting_SD_Pipeline.from_single_file(pretrained_model_link_or_path=base_model_path,torch_dtype=torch.float16)
     
     noise_scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2",subfolder='scheduler')
     noise_scheduler.config.prediction_type = "epsilon"
-    
-    
-
-
-    pretrained_vae = AutoencoderKL.from_single_file(pretrained_model_link_or_path_or_dict="/home/zliu/PFN/pretrained_models/VAEs/vae-ft-mse-840000-ema-pruned_fp16.safetensors")
-    current_stable_diffusion_model.vae = pretrained_vae # update the VAE
-    
+    my_pipe = StableDiffusionPipeline.from_pretrained("ckpt/anything-v4.5-vae-swapped")
+    current_stable_diffusion_model.vae = my_pipe.vae
     pipe = current_stable_diffusion_model.to("cuda")
-
     pipe.scheduler = noise_scheduler
     pipe.vae = pipe.vae.half()
     pipe.unet = pipe.unet.half()
     pipe = pipe.to("cuda:0")
     
     print("loaded the base models")
-    
     
     
     #------------------------------------------------------------------#
@@ -163,7 +154,7 @@ if __name__=="__main__":
     os.makedirs(saved_ours_adaIN_ours_attn_folder,exist_ok=True)
 
     # Ours Attn
-    saved_ours_attns_folder = os.path.join(saved_path,"ours_attn")
+    saved_ours_attns_folder = os.path.join(saved_path,"ours_attnV2")
     os.makedirs(saved_ours_attns_folder,exist_ok=True)
     
     #------------------------------------------------------------------#
@@ -275,26 +266,37 @@ if __name__=="__main__":
         fg_image = fg_image.astype(np.uint8)
         fg_image = Image.fromarray(fg_image)
         
+        
+        # update fg_image here
+        fg_root_path = root_path.replace("Synthesis_Images","Init_Inpainting")
+        assert "Init_Inpainting" in fg_root_path
+        fg_image = Image.open(os.path.join(fg_root_path,image_path)).convert("RGB")
+    
+        
+        
+        
 
+        # # initial foreground image
+        # initial_fg_image = initial_fg_image.resize(origianl_size)
+        # initial_fg_image.save(os.path.join(saved_images_folder_specific_folder,os.path.basename(image_path)))
+        # # save original images
+        # saved_input.save(os.path.join(saved_original_images_folder_specific_folder,os.path.basename(image_path)))
+        # # saved bg mask
+        # original_bg_mask.save(os.path.join(saved_bg_images_folder_specific_folder,os.path.basename(image_path)))
+        
+        
         with torch.no_grad():
             
-            without_noise_model = "/home/zliu/PFN/pretrained_models/Converter/Mix_training_Text2Image/ckpt_8001.pt"
+            without_noise_model = "/home/zliu/PFN/pretrained_models/Converter/Mix_inpainting_with_initial/ckpt_13001.pt"
+    
 
-
-            result= pipe(ref_image=fg_image,
-                original_image = resize_input_image_pil,
-                original_foreground_mask=fg_mask_np,
-                prompt=descriptions,
-                num_inference_steps=50,
-                reference_attn=use_attn,
-                reference_adain=use_adaIN,
-                fg_mask=fg_mask,
+            result = pipe(full_image=input_image,prompt=[descriptions],fg_image= fg_image,fg_mask=fg_mask_np,
+                pretrained_converter_path = without_noise_model,
                 use_converter=use_converter,
-                pretrained_model_path=without_noise_model,
-                ).images[0]
-            
-            result = np.array(result)
-            
+                use_adaIN=use_adaIN,
+                use_attn=use_attn,
+                gudiance_score=10,
+                attn_weight=0.5)
 
             if inference_type=='off_inpainting':
                 saved_name = os.path.join(saved_official_inpainting_specific_folder,os.path.basename(image_path))
@@ -325,3 +327,8 @@ if __name__=="__main__":
                 skimage.io.imsave(saved_name,result)
             
             
+            
+
+            
+            
+        

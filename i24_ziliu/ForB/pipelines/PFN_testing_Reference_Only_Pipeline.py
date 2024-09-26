@@ -1014,6 +1014,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
         fg_mask = None,
         use_converter=False,
         pretrained_model_path=None,
+        attn_weight = 1.0,
     ):
 
         if use_converter:
@@ -1031,10 +1032,6 @@ class PFN_Text2Image_Reference_Only_Pipeline(
         # 0. Default height and width to unet
         height, width = self._default_height_width(height, width, ref_image) # default is 512,512
         
-        # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
         
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1046,7 +1043,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
 
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0  # default is 7.5
-        do_classifier_free_guidance = True
+        
         
 
   
@@ -1060,7 +1057,10 @@ class PFN_Text2Image_Reference_Only_Pipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=None,
         )
-
+        
+        positive_embeds = prompt_embeds[1:,:,:]   #[1,77.768]
+        negative_embeds = prompt_embeds[0:1,:,:]  #[1,77.768]
+        
 
 
         ref_image = self.prepare_image(
@@ -1072,6 +1072,8 @@ class PFN_Text2Image_Reference_Only_Pipeline(
             device=device,
             dtype=prompt_embeds.dtype,
         )
+        
+
 
 
         original_image = self.prepare_image(
@@ -1083,6 +1085,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
             device=device,
             dtype=prompt_embeds.dtype,
         )
+
 
         
 
@@ -1101,6 +1104,9 @@ class PFN_Text2Image_Reference_Only_Pipeline(
             generator,
             latents,
         ) # pure guassin noise, or input latents, which is pure guassian noise.
+        
+        
+
 
 
         ref_image_latents = self.prepare_ref_latents(
@@ -1128,28 +1134,18 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                                                         mode='nearest').type_as(ref_image_latents)
 
 
-
-        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta) # here is the NULL        
-        # 9. Modify self attention and group norm
         MODE = "write"
-        uc_mask = (
-            torch.Tensor([1] * batch_size * num_images_per_prompt + [0] * batch_size * num_images_per_prompt)
-            .type_as(ref_image_latents)
-            .bool()
-        )
-
-
+        
  
-        def hacked_basic_transformer_inner_forward(
-            self,
+        def hacked_basic_transformer_inner_forward(self,
             hidden_states: torch.Tensor,
             attention_mask: Optional[torch.Tensor] = None,
             encoder_hidden_states: Optional[torch.Tensor] = None,
             encoder_attention_mask: Optional[torch.Tensor] = None,
             timestep: Optional[torch.LongTensor] = None,
             cross_attention_kwargs: Dict[str, Any] = None,
-            class_labels: Optional[torch.LongTensor] = None,):  
+            class_labels: Optional[torch.LongTensor] = None):  
             
             # perform layer noramlzaition.
             if self.use_ada_layer_norm:
@@ -1172,7 +1168,6 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                     **cross_attention_kwargs,
                 )
             else:
-                
                 # when writing, without text prmpt
                 if MODE == "write":
                     self.attn_bank.append(norm_hidden_states.detach().clone())
@@ -1183,29 +1178,37 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         **cross_attention_kwargs,
                     )
 
-
+                alpha = attn_weight
                 if MODE == "read":
                     # maybe alayws true: just add the
-
                     if attention_auto_machine_weight > self.attn_weight:
-                        attn_output_uc = self.attn1(
+                        
+                        if len(self.attn_bank)!=0:
+                            current_attn_bank = [self.attn_bank[0] * alpha + (1-alpha) *norm_hidden_states]
+                        else:
+                            current_attn_bank = self.attn_bank
+                        
+                        attn_output = self.attn1(
                             norm_hidden_states,
-                            encoder_hidden_states=torch.cat([norm_hidden_states] + self.attn_bank, dim=1),
-                            # attention_mask=attention_mask,
+                            encoder_hidden_states=torch.cat([norm_hidden_states] + current_attn_bank, dim=1),
+                            #encoder_hidden_states=torch.cat([norm_hidden_states]+[norm_hidden_states], dim=1),
+                            attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
-                        #[2,4096,320]: 1:c,2: Noc
-                        # print(attn_output_uc.shape)
-                        # quit()
-                        attn_output_c = attn_output_uc.clone()
-                        if do_classifier_free_guidance and style_fidelity > 0:
-                            # select the uncond regions
-                            attn_output_c[uc_mask] = self.attn1(
-                                norm_hidden_states[uc_mask],
-                                encoder_hidden_states=norm_hidden_states[uc_mask],
-                                **cross_attention_kwargs,
-                            )
-                        attn_output = style_fidelity * attn_output_c + (1.0 - style_fidelity) * attn_output_uc
+                        
+                        # attn_output = attn_output.view(1,4096,320)
+                        # #[2,4096,320]: 1:c,2: Noc
+                        # # print(attn_output_uc.shape)
+                        # # quit()
+                        # attn_output_c = attn_output_uc.clone()
+                        # if True and style_fidelity > 0:
+                        #     # select the uncond regions
+                        #     attn_output_c[uc_mask] = self.attn1(
+                        #         norm_hidden_states[uc_mask],
+                        #         encoder_hidden_states=norm_hidden_states[uc_mask],
+                        #         **cross_attention_kwargs,
+                        #     )
+                        # attn_output = style_fidelity * attn_output_c + (1.0 - style_fidelity) * attn_output_uc
                         self.attn_bank.clear()
                     else:
                         
@@ -1215,6 +1218,17 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                             attention_mask=attention_mask,
                             **cross_attention_kwargs,
                         )
+
+                if MODE == "read_old":                           
+                    attn_output = self.attn1(
+                        norm_hidden_states,
+                        encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+                        attention_mask=attention_mask,
+                        **cross_attention_kwargs,
+                    )
+                    self.attn_bank.clear()
+            
+            
             if self.use_ada_layer_norm_zero:
                 attn_output = gate_msa.unsqueeze(1) * attn_output
             
@@ -1225,7 +1239,6 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                 norm_hidden_states = (
                     self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
                 )
-
                 # 2. Cross-Attention
                 attn_output = self.attn2(
                     norm_hidden_states,
@@ -1233,7 +1246,12 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                     attention_mask=encoder_attention_mask,
                     **cross_attention_kwargs,
                 )
+
+                
+                attn_output = attn_output.view(1,-1,attn_output.shape[-1])
                 hidden_states = attn_output + hidden_states
+                
+
 
             # 3. Feed-forward
             norm_hidden_states = self.norm3(hidden_states)
@@ -1266,13 +1284,22 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                     mean_acc = sum(self.mean_bank) / float(len(self.mean_bank))
                     var_acc = sum(self.var_bank) / float(len(self.var_bank))
                     std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                    x_uc = (((x - mean) / std) * std_acc) + mean_acc
-                    x_c = x_uc.clone()
-                    if do_classifier_free_guidance and style_fidelity > 0:
-                        x_c[uc_mask] = x[uc_mask]
-                    x = style_fidelity * x_c + (1.0 - style_fidelity) * x_uc
+                    # x_uc = (((x - mean) / std) * std_acc) + mean_acc
+
+                    x = (((x - mean) / std) * std_acc) + mean_acc
+                    # x_c = x_uc.clone()
+                    # if True and style_fidelity > 0:
+                    #     x_c[uc_mask] = x[uc_mask]
+                    # x = style_fidelity * x_c + (1.0 - style_fidelity) * x_uc
                 self.mean_bank = []
                 self.var_bank = []
+            
+            if MODE =='read_old':
+                x= x
+                self.mean_bank = []
+                self.var_bank = []
+            
+            
             return x
 
         def hack_CrossAttnDownBlock2D_forward(
@@ -1311,12 +1338,19 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
                         std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
-                        hidden_states_c = hidden_states_uc.clone()
-                        if do_classifier_free_guidance and style_fidelity > 0:
-                            hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
-
+                        # hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        
+                        hidden_states= (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        # hidden_states_c = hidden_states_uc.clone()
+                        # if True and style_fidelity > 0:
+                        #     hidden_states_c[uc_mask] = hidden_states[uc_mask]
+                        # hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                    
+                if MODE =='read_old':
+                    hidden_states = hidden_states
+                    self.mean_bank = []
+                    self.var_bank = []
+                    
                 output_states = output_states + (hidden_states,)
 
             if MODE == "read":
@@ -1356,11 +1390,19 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
                         std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
-                        hidden_states_c = hidden_states_uc.clone()
-                        if do_classifier_free_guidance and style_fidelity > 0:
-                            hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        # hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
+
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        # hidden_states_c = hidden_states_uc.clone()
+                        # if True and style_fidelity > 0:
+                        #     hidden_states_c[uc_mask] = hidden_states[uc_mask]
+                        # hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        
+                if MODE=='read_old':
+                    hidden_states = hidden_states
+                    self.mean_bank = []
+                    self.var_bank = []
+                    
 
                 output_states = output_states + (hidden_states,)
 
@@ -1416,11 +1458,19 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
                         std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
-                        hidden_states_c = hidden_states_uc.clone()
-                        if do_classifier_free_guidance and style_fidelity > 0:
-                            hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        #hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        # hidden_states_c = hidden_states_uc.clone()
+                        # if True and style_fidelity > 0:
+                        #     hidden_states_c[uc_mask] = hidden_states[uc_mask]
+                        # hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        
+                if MODE =='read_old':
+                    hidden_states = hidden_states
+                    self.mean_bank = []
+                    self.var_bank = []
+                    
 
             if MODE == "read":
                 self.mean_bank = []
@@ -1460,11 +1510,19 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         mean_acc = sum(self.mean_bank[i]) / float(len(self.mean_bank[i]))
                         var_acc = sum(self.var_bank[i]) / float(len(self.var_bank[i]))
                         std_acc = torch.maximum(var_acc, torch.zeros_like(var_acc) + eps) ** 0.5
-                        hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
-                        hidden_states_c = hidden_states_uc.clone()
-                        if do_classifier_free_guidance and style_fidelity > 0:
-                            hidden_states_c[uc_mask] = hidden_states[uc_mask]
-                        hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        # hidden_states_uc = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        
+                        hidden_states = (((hidden_states - mean) / std) * std_acc) + mean_acc
+                        # hidden_states_c = hidden_states_uc.clone()
+                        # if True and style_fidelity > 0:
+                        #     hidden_states_c[uc_mask] = hidden_states[uc_mask]
+                        # hidden_states = style_fidelity * hidden_states_c + (1.0 - style_fidelity) * hidden_states_uc
+                        
+                if MODE=='read_old':
+                    hidden_states = hidden_states
+                    self.mean_bank = []
+                    self.var_bank = []
+                    
 
             if MODE == "read":
                 self.mean_bank = []
@@ -1475,6 +1533,9 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                     hidden_states = upsampler(hidden_states, upsample_size)
 
             return hidden_states
+
+
+
 
         # reference attn
         if reference_attn:
@@ -1527,43 +1588,47 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                 module.gn_weight *= 2
 
 
+
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                # ref only part
+    
                 noise = randn_tensor(
                     ref_image_latents.shape, generator=generator, device=device, dtype=ref_image_latents.dtype
                 )
                 
-                # this is the reference
-                ref_xt = self.scheduler.add_noise(
-                    ref_image_latents,
-                    noise,
-                    t.reshape(
-                        1,
-                    ),
-                )
-                ref_xt = torch.cat([ref_xt] * 2) if do_classifier_free_guidance else ref_xt
-                ref_xt = self.scheduler.scale_model_input(ref_xt, t)  # already two, but all contains.
+                
+        
+                latent_model_input = latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                
-                # write the current rf-attentions into forward functions.
-                MODE = "write"
-                self.unet(
-                    ref_xt,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    return_dict=False,
-                )
-                
-                if use_converter:
-                    # get input information
+                # # ref only part
+            
+                if reference_adain or reference_attn:
+                    if use_converter:
+                        ref_xt = ref_image_latents
+                    
+                    else:
+                        ref_xt = self.scheduler.add_noise(
+                            ref_image_latents,
+                            noise,
+                            t.reshape(
+                                1,
+                            ),
+                        )
+                        ref_xt = self.scheduler.scale_model_input(ref_xt, t)  # already two, but all contains.
+                    
+                    MODE = "write"
+                    self.unet(
+                        ref_xt,
+                        t,
+                        encoder_hidden_states=positive_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )
+                    
+                        
                     if reference_adain:
                         mean_bank_fore,variance_bank_fore,feature_bank_fore = get_all_mean_and_var_and_hidden_states(gn_modules=gn_modules)
                     
@@ -1578,10 +1643,8 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                     fg_mask = fg_mask.half()
                     fg_mask = fg_mask[0:1,:,:,:]
                     t_embed = t_embed[0:1,:]
-                    # use the network here
-                    if do_classifier_free_guidance:
-                        fg_mask  = fg_mask.repeat(2,1,1,1)
-                        # t_embed = t_embed.repeat(2,1)
+                    
+
 
                     
                     if reference_adain and not reference_attn:
@@ -1590,7 +1653,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                                         var_bank=variance_bank_fore,
                                         feat_bank=feature_bank_fore,
                                         time_embed=t_embed,
-                                        text_embed=prompt_embeds,
+                                        text_embed=positive_embeds,
                                         foreground_mask=fg_mask,
                                         inputs = fg_attn_banks_list,
                                         use_seperate = 'adaIN'
@@ -1604,7 +1667,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                                         var_bank=variance_bank_fore,
                                         feat_bank=feature_bank_fore,
                                         time_embed=t_embed,
-                                        text_embed=prompt_embeds,
+                                        text_embed=positive_embeds,
                                         foreground_mask=fg_mask,
                                         inputs = fg_attn_banks_list,
                                         use_seperate = 'attn'
@@ -1615,11 +1678,12 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                                         var_bank=variance_bank_fore,
                                         feat_bank=feature_bank_fore,
                                         time_embed=t_embed,
-                                        text_embed=prompt_embeds,
+                                        text_embed=positive_embeds,
                                         foreground_mask=fg_mask,
                                         inputs = fg_attn_banks_list,
                                         use_seperate = 'all'
                                         )
+                    
                     
                     if reference_adain:
                         update_mean_and_variane_gn_auto(gn_modules=gn_modules,new_mean_bank=fg2all_mean_bank,
@@ -1632,18 +1696,43 @@ class PFN_Text2Image_Reference_Only_Pipeline(
 
 
                 # predict the noise residual
-                MODE = "read"
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                
+                if do_classifier_free_guidance:
+                    MODE ='read'
+                    noise_pred_text = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=positive_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+
+
+
+                    MODE ='read_old'
+                    noise_pred_uncond = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=negative_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    
+                    
+                
+                else:
+                    MODE = 'read'
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=positive_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    # noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
@@ -1663,7 +1752,7 @@ class PFN_Text2Image_Reference_Only_Pipeline(
                         init_latents_proper, noise, torch.tensor([noise_timestep])
                     )
                 
-                latents = resize_original_foreground_mask * init_latents_proper + (1-resize_original_foreground_mask) * latents
+                # latents = resize_original_foreground_mask * init_latents_proper + (1-resize_original_foreground_mask) * latents
                 
        
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
