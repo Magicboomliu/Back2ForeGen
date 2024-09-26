@@ -1,5 +1,4 @@
 *.safetensors
-*.png
 *.jpg
 *.pth
 *.pt
