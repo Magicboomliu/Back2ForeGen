@@ -11,7 +11,7 @@ from ForB.dataloader.utils.utils import read_text_lines,get_id_and_prompt
 from ForB.dataloader.utils import transforms
 import numpy as np
 import matplotlib.pyplot as plt
-
+from tqdm import tqdm
 
 
 
@@ -33,9 +33,7 @@ class Anime_Dataset(Dataset):
         self.mode = mode
         self.transform = transform
         self.save_filename = save_filename
-
         self.target_resolution = target_resolution
-
         self.get_foreground = get_foreground
         
         dataset_dict = {
@@ -49,11 +47,15 @@ class Anime_Dataset(Dataset):
         lines = read_text_lines(os.path.join(self.datapath,dataset_dict[mode]))
         
         for line in lines:
-            # get prompt id
-            prompt_id, prompt = get_id_and_prompt(line)
+            parts = line.split(' ', 2)
+            image_path = parts[0]
+            bg_mask_path = parts[1]
+            description = parts[2]
+
             # get the images and the background_mask
-            image_path = os.path.join(self.datapath,"images/{}.png".format(prompt_id))
-            background_path = os.path.join(self.datapath,"background_masks/{}.png".format(prompt_id))
+            image_path = os.path.join(self.datapath,image_path)
+            background_path = os.path.join(self.datapath,bg_mask_path)
+            prompt = description
             assert os.path.exists(image_path) and os.path.exists(background_path)
 
             sample = dict()
@@ -92,8 +94,8 @@ class Anime_Dataset(Dataset):
             # get the foreground_mask
             sample['fg_mask'] = np.ones_like(sample['bg_mask'].astype(np.float32)) - sample['bg_mask'].astype(np.float32)
             sample['fg_image'] = sample["image"] * sample['fg_mask']
-            sample['fg_image'], sample['fg_mask'] = get_resize_foreground_and_mask(image=sample['fg_image'],
-                                                        mask=sample['fg_mask'])
+            # sample['fg_image'], sample['fg_mask'] = get_resize_foreground_and_mask(image=sample['fg_image'],
+            #                                             mask=sample['fg_mask'])
 
         if self.transform is not None:
             sample = self.transform(sample)
@@ -110,27 +112,24 @@ if __name__=="__main__":
     import skimage.io
     import matplotlib.pyplot as plt
 
-    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset/SD_Gen_Images"
-    trainlist = "descriptions_train.txt"
-    vallist = "descriptions_test.txt"
+    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset"
+    trainlist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
+    vallist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
 
-    train_transform_list = [
-                            transforms.RandomCrop(400,400),
-                            transforms.RandomColor(),
-                            transforms.ToTensor()]
+    train_transform_list = [transforms.ToTensor()]
     train_transform = transforms.Compose(train_transform_list)
 
     test_transform_list = [transforms.ToTensor()]
     test_transform = transforms.Compose(test_transform_list)
 
-    anime_train_dataset = Anime_Dataset(datapath=datapath,
+    anime_train_dataset = Anime_DatasetV2(datapath=datapath,
                             trainlist=trainlist,
                             vallist=vallist,
                             transform=train_transform,
                             save_filename=False,
                             mode='train',
                             target_resolution=(512,512))
-    anime_test_dataset = Anime_Dataset(datapath=datapath,
+    anime_test_dataset = Anime_DatasetV2(datapath=datapath,
                             trainlist=trainlist,
                             vallist=vallist,
                             transform=test_transform,
@@ -139,17 +138,21 @@ if __name__=="__main__":
                             target_resolution=(512,512))
 
 
-    for idx, sample in enumerate(anime_train_dataset):
+    for sample in tqdm(anime_train_dataset):
 
-        plt.subplot(2,1,1)
-        plt.imshow(sample['image'].permute(1,2,0).cpu().numpy())
-        plt.subplot(2,1,2)
-        plt.imshow(sample['bg_mask'].squeeze(0).cpu().numpy(),cmap='gray')
-        plt.savefig("1.png")
-        print(sample['prompt'])
+        image = sample['image']
+        bg_mask = sample['bg_mask']
+        prompt = sample['prompt']
 
-        print("--------------")
-        quit()
+        print(prompt)
+
+        
+
+
+
+
+
+
 
 
 

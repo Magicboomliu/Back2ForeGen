@@ -56,25 +56,19 @@ from transformers import (
 )
 
 import sys
-sys.path.append("..")
-
-from trainer.dataset_configurationV2 import prepare_dataset,image_denormalization,image_normalization
-# from trainer.dataset_configuration import prepare_dataset,image_normalization,image_denormalization
+sys.path.append("../..")
+from ForB.trainer.dataset_configuration import prepare_dataset,image_denormalization,image_normalization,prepare_dataset_with_inpainting
 check_min_version("0.26.0.dev0")
 import skimage.io
 logger = get_logger(__name__, log_level="INFO")
 import  matplotlib.pyplot as plt
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-# from ForB.networks.f2all_converter import F2All_Converter
-# from ForB.networks.f2all_converter_tpm import F2All_Converter
-
 from ForB.networks.learnable_reference_only import ConverterNetwork
 from ForB.losses.layer_wise_l1_loss import LayerWise_L1_Loss
 from ForB.losses.attn_loss import Attn_loss
 
 # PLT 
 import matplotlib.pyplot as plt
-
 from AvergeMeter import AverageMeter
 
 
@@ -307,6 +301,9 @@ def parse_args():
     parser.add_argument('--use_adIN', action='store_true', help="Increase output verbosity")
 
     parser.add_argument('--use_attn', action='store_true', help="Increase output verbosity")
+    
+    
+    parser.add_argument('--start_with_inpaint', action='store_true', help="Increase output verbosity")
 
     
     parser.add_argument(
@@ -573,7 +570,7 @@ def main():
             os.makedirs(args.output_dir, exist_ok=True)
 
     '''------------------------------- Models Part Configuration ---------------------------------------'''
-
+    assert os.path.exists(args.pretrained_single_file)
     current_stable_diffusion_model = StableDiffusionInpaintPipeline.from_single_file(
                                         pretrained_model_link_or_path=args.pretrained_single_file)
     my_pipe = StableDiffusionPipeline.from_pretrained("ckpt/anything-v4.5-vae-swapped")
@@ -662,16 +659,31 @@ def main():
     )
 
     with accelerator.main_process_first():
-        (train_loader,test_loader), num_batches_per_epoch = prepare_dataset(
-                datapath=args.dataset_path,
-                trainlist=args.trainlist,
-                vallist=args.vallist,
-                batch_size=args.train_batch_size,
-                logger=logger,
-                test_size=1,
-                datathread=args.dataloader_num_workers,
-                target_resolution=(512,512),
-                use_foreground=True)
+        
+        if args.start_with_inpaint:
+            (train_loader,test_loader), num_batches_per_epoch = prepare_dataset_with_inpainting(
+                    datapath=args.dataset_path,
+                    trainlist=args.trainlist,
+                    vallist=args.vallist,
+                    batch_size=args.train_batch_size,
+                    logger=logger,
+                    test_size=1,
+                    datathread=args.dataloader_num_workers,
+                    target_resolution=(512,512),
+                    use_foreground=True)
+        
+        else:
+            
+            (train_loader,test_loader), num_batches_per_epoch = prepare_dataset(
+                    datapath=args.dataset_path,
+                    trainlist=args.trainlist,
+                    vallist=args.vallist,
+                    batch_size=args.train_batch_size,
+                    logger=logger,
+                    test_size=1,
+                    datathread=args.dataloader_num_workers,
+                    target_resolution=(512,512),
+                    use_foreground=True)
         logger.info("Loaded the DataLoader....") # only the main process show the logs
         
         # 0-100
@@ -1097,7 +1109,6 @@ def main():
                         module.feature_bank = []
 
                 
-                
                 if args.use_attn:
                     # Logic Here
                     def hacked_basic_transformer_inner_forward(
@@ -1193,8 +1204,6 @@ def main():
                         
                     
                 # infernece view input
-                
-                
                 unet_input = torch.cat([fore_latents, masked_for_concated, masked_image_latents], dim=1)
             
                 # write the current rf-attentions into forward functions.

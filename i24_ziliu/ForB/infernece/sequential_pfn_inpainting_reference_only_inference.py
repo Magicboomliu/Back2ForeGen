@@ -46,13 +46,89 @@ def resize_image(image,size,is_mask):
         resized_image = resized_image.astype(np.bool_)
     return resized_image, original_shape
 
+import argparse
+def parse_args():
+    parser = argparse.ArgumentParser(description="Infenrece")
 
+    parser.add_argument(
+        "--root_path",
+        type=str,
+        default=None,
+        required=True,
+        help="/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/")
 
+    parser.add_argument(
+        "--saved_path",
+        type=str,
+        default=None,
+        help="../outputs/evaluation_results/inpainting_pfn_with_initial")
+
+    parser.add_argument(
+        "--base_model_path",
+        type=str,
+        default=None,
+        required=True,
+        help="/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/")
+
+    
+    
+    parser.add_argument(
+        "--without_noise_model",
+        type=str,
+        default=None,
+        required=True,
+        help="/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/")
+
+    parser.add_argument(
+        "--validation_list_path",
+        type=str,
+        default=None,
+        help="../outputs/evaluation_results/inpainting_pfn_with_initial")
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=2024,
+        help="../outputs/evaluation_results/inpainting_pfn_with_initial")
+
+    parser.add_argument(
+        "--inference_type",
+        type=str,
+        default=2024,
+        help='ours_adaIN')
+    
+    args = parser.parse_args()
+
+    return args
 if __name__=="__main__":
+
+    args = parse_args()
+    
+    
+    root_path = args.root_path 
+    saved_path = args.saved_path 
+    base_model_path = args.base_model_path
+    validation_list_path = args.validation_list_path
+    without_noise_model = args.without_noise_model
+    set_seed(args.seed)
+    inference_type_list = ["off_adaIN",'off_attn',"off_attn_adaIN","off_inpainting","ours_attn","ours_adaIN","ous_attn_adaIN"]
+    inference_type = args.inference_type
+    
+    
+    # root_path = "/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/"
+    # saved_path = '../outputs/evaluation_results/inpainting_pfn'
+    # without_noise_model = "/home/zliu/PFN/pretrained_models/Converter/Mix_Inpainting/ckpt_14001.pt"
+    # validation_list_path = "/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/filenames/validation_select_data.txt"
+    validation_contents = read_text_lines(validation_list_path)
+    # os.makedirs(saved_path,exist_ok=True)
+    # set_seed(1024)
+    # inference_type = 'ours_attn_adaIN'
+    # base_model_path = "/home/zliu/PFN/pretrained_models/base_models/anything45Inpainting_v10-inpainting.safetensors"
+    
     
     inference_type_list = ["off_adaIN",'off_attn',"off_attn_adaIN","off_inpainting","ours_attn","ours_adaIN","ous_attn_adaIN"]
     
-    inference_type = 'ours_attn_adaIN'
+    
     
     if inference_type=='off_inpainting':
         use_converter = False
@@ -88,14 +164,7 @@ if __name__=="__main__":
         use_converter = True
         use_adaIN = True
         use_attn = True
-    
-    root_path = "/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/"
-    saved_path = '../outputs/evaluation_results/inpainting_pfn'
-    os.makedirs(saved_path,exist_ok=True)
-    
-    set_seed(1024)
 
-    base_model_path = "/home/zliu/PFN/pretrained_models/base_models/anything45Inpainting_v10-inpainting.safetensors"
     current_stable_diffusion_model = PFN_AdaIN_Inpainting_SD_Pipeline.from_single_file(pretrained_model_link_or_path=base_model_path,torch_dtype=torch.float16)
     
     noise_scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2",subfolder='scheduler')
@@ -170,8 +239,7 @@ if __name__=="__main__":
     saved_gt_reference_attn_adain = os.path.join(saved_path,"gt_reference_adaIN_attn")
     os.makedirs(saved_gt_reference_attn_adain,exist_ok=True)
 
-    validation_list_path = "/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/filenames/validation_select_data.txt"
-    validation_contents = read_text_lines(validation_list_path)
+
 
     for fname in tqdm(validation_contents):
         parts = fname.split(' ', 2)
@@ -277,7 +345,7 @@ if __name__=="__main__":
         
         with torch.no_grad():
             
-            without_noise_model = "/home/zliu/PFN/pretrained_models/Converter/Mix_Inpainting/ckpt_14001.pt"
+            
     
 
             result = pipe(full_image=input_image,prompt=[descriptions],fg_image= fg_image,fg_mask=fg_mask_np,

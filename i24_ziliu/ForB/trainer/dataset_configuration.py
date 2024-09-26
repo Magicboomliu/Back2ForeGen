@@ -7,7 +7,9 @@ import sys
 import os
 import logging
 sys.path.append("../..")
+
 from ForB.dataloader.anime_dataset import Anime_Dataset
+from ForB.dataloader.anime_dataset_with_inpaint import Anime_Dataset_WithInpainting
 from ForB.dataloader.utils import transforms
 
 def collate_fn_concat(batch):
@@ -80,6 +82,65 @@ def prepare_dataset(datapath,
     return (train_loader,test_loader),num_batches_per_epoch
 
 
+def prepare_dataset_with_inpainting(datapath,
+                    trainlist,
+                    vallist,
+                    logger=None,
+                    batch_size=1,
+                    test_size=1,
+                    datathread=4,
+                    target_resolution=(512,512),
+                    use_foreground=False):
+
+    train_transform_list = [transforms.ToTensor()]
+    train_transform = transforms.Compose(train_transform_list)
+
+    test_transform_list = [transforms.ToTensor()]
+    test_transform = transforms.Compose(test_transform_list)
+    
+
+    anime_train_dataset = Anime_Dataset_WithInpainting(datapath=datapath,
+                            trainlist=trainlist,
+                            vallist=vallist,
+                            transform=train_transform,
+                            save_filename=False,
+                            mode='train',
+                            target_resolution=(512,512),
+                            get_foreground=use_foreground)
+
+    anime_test_dataset = Anime_Dataset_WithInpainting(datapath=datapath,
+                            trainlist=trainlist,
+                            vallist=vallist,
+                            transform=test_transform,
+                            save_filename=False,
+                            mode='test',
+                            target_resolution=(512,512),
+                            get_foreground=use_foreground)
+
+    datathread=datathread
+    if os.environ.get('datathread') is not None:
+        datathread = int(os.environ.get('datathread'))
+    if logger is not None:
+        logger.info("Use %d processes to load data..." % datathread)
+    
+    train_loader = DataLoader(anime_train_dataset, batch_size=batch_size, \
+                                shuffle=True, num_workers=datathread,
+                                pin_memory=True,
+                                collate_fn=collate_fn_concat)
+
+    test_loader = DataLoader(anime_test_dataset, batch_size=test_size, \
+                                shuffle=False, num_workers=datathread,
+                                pin_memory=True,
+                                collate_fn=collate_fn_concat)
+    
+    num_batches_per_epoch = len(train_loader)
+
+    return (train_loader,test_loader),num_batches_per_epoch
+
+
+
+
+
 def image_normalization(image_tensor):
     image_normalized = image_tensor * 2.0 - 1.0
     return image_normalized
@@ -94,9 +155,10 @@ if __name__=="__main__":
     
     import matplotlib.pyplot as plt
 
-    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset/SD_Gen_Images"
-    trainlist = "descriptions_train.txt"
-    vallist = "descriptions_test.txt"
+    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset"
+    trainlist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
+    vallist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
+
     logger = None
     batch_size = 1
     test_size = 1
@@ -114,7 +176,7 @@ if __name__=="__main__":
                     use_foreground=True
                     )
     
-    for idx, sample in enumerate(test_loader):
+    for idx, sample in enumerate(train_loader):
         
         
         plt.subplot(2,2,1)
@@ -125,16 +187,10 @@ if __name__=="__main__":
         plt.imshow(sample['fg_image'].squeeze(0).permute(1,2,0).cpu().numpy())
         plt.subplot(2,2,4)
         plt.imshow(sample['fg_mask'].squeeze(0).squeeze(0).cpu().numpy(),cmap='gray')
-        plt.savefig("example.png")
-        print(sample['prompt'])
 
+        print(sample['prompt'])
+        plt.savefig("example.png")
         quit()
-        # print(sample['image'].shape)
-        # print(sample['bg_mask'].shape)
-        # print(sample['prompt'])
-        # print(sample['fg_image'].shape)
-        # print(sample['fg_mask'].shape)
-        # quit()
 
 
 
