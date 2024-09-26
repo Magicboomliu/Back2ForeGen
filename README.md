@@ -49,6 +49,18 @@ sh train_sd_f2b.sh
 ```
 Set the training options  in the scirpts into `"TRAIN_SD15_Inpainting_F2B_Mix_with_Attn_And_AdaIN_Start_With_Inpaint"` . 
 
+- Train the `AdaIN converter` only   
+
+There are two kinds options to train the conveter, the `AdaIN MLP` and `AdaIN Residual`, train the network by the following scripts: 
+
+```
+cd scripts
+sh train_sd_f2b.sh
+```
+
+switch the model with `simple` or `Residual`.
+
+
 
 ### Inference the Background using Converters
 
