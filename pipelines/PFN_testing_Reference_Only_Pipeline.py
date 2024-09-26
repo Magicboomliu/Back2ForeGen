@@ -35,7 +35,7 @@ from diffusers.utils.torch_utils import randn_tensor
 import sys
 import os
 sys.path.append("../..")
-from networks.f2all_conveter_ver2 import F2All_Converter
+from networks.adaIN_converter import F2All_Converter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

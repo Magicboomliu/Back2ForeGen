@@ -17,7 +17,7 @@ pip install -r requirements.txt
 ### Dataset and Pretrained Model Download
 
 #### Dataset Download
-- [Dataset 10 kinds of data (10000 images totally)]()
+- [Dataset 10 kinds of data (10000 images totally) ~11.4G](https://drive.google.com/file/d/1X3JuGEmbBLQ1DSow3I0BjvlMLsGMSRqc/view?usp=drive_link)
 
 
 #### Pretrained Models: 
