@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sys
 sys.path.append("../..")
-from ForB.networks.f2all_conveter_ver2 import F2All_Converter
-from ForB.networks.attention_converter import AggregationNet
+from networks.adaIN_converter import F2All_Converter
+from networks.attention_converter import AggregationNet
 
 
 

@@ -63,10 +63,10 @@ import  matplotlib.pyplot as plt
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 
 
-from ForB.networks.learnable_reference_only import ConverterNetwork
+from networks.learnable_reference_only import ConverterNetwork
 
-from ForB.losses.layer_wise_l1_loss import LayerWise_L1_Loss
-from ForB.losses.attn_loss import Attn_loss 
+from losses.layer_wise_l1_loss import LayerWise_L1_Loss
+from losses.attn_loss import Attn_loss 
 import matplotlib.pyplot as plt
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline,StableDiffusionMixin
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin

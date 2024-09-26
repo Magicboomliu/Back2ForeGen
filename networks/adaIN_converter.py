@@ -6,7 +6,7 @@ import os
 from torch.nn.init import kaiming_normal
 import sys
 sys.path.append("../..")
-from ForB.networks.utils_net import conv,conv3x3,conv_Relu,convbn,ResBlock,BasicBlock,get_positional_encoding
+from networks.utils_net import conv,conv3x3,conv_Relu,convbn,ResBlock,BasicBlock,get_positional_encoding
 
 class Mid_Block_Network(nn.Module):
     def __init__(self, in_channels, time_embed_dim=512, text_prompt_dim=768):

@@ -8,9 +8,9 @@ import os
 import logging
 sys.path.append("../..")
 
-from ForB.dataloader.anime_dataset import Anime_Dataset
-from ForB.dataloader.anime_dataset_with_inpaint import Anime_Dataset_WithInpainting
-from ForB.dataloader.utils import transforms
+from dataloader.anime_dataset import Anime_Dataset
+from dataloader.anime_dataset_with_inpaint import Anime_Dataset_WithInpainting
+from dataloader.utils import transforms
 
 def collate_fn_concat(batch):
     sample = dict()

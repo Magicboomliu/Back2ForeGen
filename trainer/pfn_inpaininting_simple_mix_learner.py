@@ -57,15 +57,15 @@ from transformers import (
 
 import sys
 sys.path.append("../..")
-from ForB.trainer.dataset_configuration import prepare_dataset,image_denormalization,image_normalization,prepare_dataset_with_inpainting
+from trainer.dataset_configuration import prepare_dataset,image_denormalization,image_normalization,prepare_dataset_with_inpainting
 check_min_version("0.26.0.dev0")
 import skimage.io
 logger = get_logger(__name__, log_level="INFO")
 import  matplotlib.pyplot as plt
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-from ForB.networks.learnable_reference_only import ConverterNetwork
-from ForB.losses.layer_wise_l1_loss import LayerWise_L1_Loss
-from ForB.losses.attn_loss import Attn_loss
+from networks.learnable_reference_only import ConverterNetwork
+from losses.layer_wise_l1_loss import LayerWise_L1_Loss
+from losses.attn_loss import Attn_loss
 
 # PLT 
 import matplotlib.pyplot as plt

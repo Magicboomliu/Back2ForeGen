@@ -35,12 +35,12 @@ from diffusers.utils.torch_utils import randn_tensor
 import sys
 import os
 sys.path.append("../..")
-from ForB.networks.f2all_conveter_ver2 import F2All_Converter
+from networks.f2all_conveter_ver2 import F2All_Converter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ForB.networks.learnable_reference_only import ConverterNetwork
+from networks.learnable_reference_only import ConverterNetwork
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
