@@ -4,6 +4,6 @@
 *.pt
 *.json
 *.ckpt
-i24_ziliu/ForB/trainer/wandb
-i24_ziliu/ForB/outputs
+trainer/wandb
+outputs
 *.zip

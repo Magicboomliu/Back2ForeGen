@@ -6,9 +6,9 @@ from torch.utils.data import Dataset
 import os
 import sys
 sys.path.append("../..")
-from ForB.dataloader.utils.file_io import read_img,read_mask,resize_image,get_resize_foreground_and_mask
-from ForB.dataloader.utils.utils import read_text_lines,get_id_and_prompt
-from ForB.dataloader.utils import transforms
+from dataloader.utils.file_io import read_img,read_mask,resize_image,get_resize_foreground_and_mask
+from dataloader.utils.utils import read_text_lines,get_id_and_prompt
+from dataloader.utils import transforms
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -108,43 +108,6 @@ class Anime_Dataset(Dataset):
 
 
 
-if __name__=="__main__":
-    import skimage.io
-    import matplotlib.pyplot as plt
-
-    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset"
-    trainlist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
-    vallist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
-
-    train_transform_list = [transforms.ToTensor()]
-    train_transform = transforms.Compose(train_transform_list)
-
-    test_transform_list = [transforms.ToTensor()]
-    test_transform = transforms.Compose(test_transform_list)
-
-    anime_train_dataset = Anime_DatasetV2(datapath=datapath,
-                            trainlist=trainlist,
-                            vallist=vallist,
-                            transform=train_transform,
-                            save_filename=False,
-                            mode='train',
-                            target_resolution=(512,512))
-    anime_test_dataset = Anime_DatasetV2(datapath=datapath,
-                            trainlist=trainlist,
-                            vallist=vallist,
-                            transform=test_transform,
-                            save_filename=False,
-                            mode='test',
-                            target_resolution=(512,512))
-
-
-    for sample in tqdm(anime_train_dataset):
-
-        image = sample['image']
-        bg_mask = sample['bg_mask']
-        prompt = sample['prompt']
-
-        print(prompt)
 
         
 

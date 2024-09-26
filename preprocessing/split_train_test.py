@@ -1,7 +1,7 @@
 import os
 import sys
 sys.path.append("../..")
-from ForB.dataloader.utils.utils import read_text_lines
+from dataloader.utils.utils import read_text_lines
 from sklearn.model_selection import train_test_split
 
 def write_list_into_files(content_list,fname):

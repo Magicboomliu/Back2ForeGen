@@ -6,8 +6,6 @@ from diffusers import DDIMScheduler
 
 import sys
 sys.path.append("../..")
-# from ForB.pipelines.SD_AdaIN import StableDiffusionReferencePipeline
-# from stable_diffusion_reference_with_noise_inversion import StableDiffusionReferencePipeline
 from PIL import Image
 
 image_path = "/home/zliu/PFN/PFN24/i24_ziliu/ForB/playground/inpaint-cat.png"

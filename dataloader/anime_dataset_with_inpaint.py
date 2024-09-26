@@ -6,9 +6,9 @@ from torch.utils.data import Dataset
 import os
 import sys
 sys.path.append("../..")
-from ForB.dataloader.utils.file_io import read_img,read_mask,resize_image,get_resize_foreground_and_mask
-from ForB.dataloader.utils.utils import read_text_lines,get_id_and_prompt
-from ForB.dataloader.utils import transforms
+from dataloader.utils.file_io import read_img,read_mask,resize_image,get_resize_foreground_and_mask
+from dataloader.utils.utils import read_text_lines,get_id_and_prompt
+from dataloader.utils import transforms
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
