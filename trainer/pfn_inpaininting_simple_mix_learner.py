@@ -56,7 +56,7 @@ from transformers import (
 )
 
 import sys
-sys.path.append("../..")
+sys.path.append("..")
 from trainer.dataset_configuration import prepare_dataset,image_denormalization,image_normalization,prepare_dataset_with_inpainting
 check_min_version("0.26.0.dev0")
 import skimage.io
@@ -600,10 +600,6 @@ def main():
         # define the network here
         
         converter_network = ConverterNetwork()
-
-    # ckpt = torch.load("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_single/ckpt_10001.pt")
-    # converter_network.load_state_dict(ckpt["model_state"])
-    # logger.info("Load Pretrained Weight at {}".format("/home/zliu/PFN/PFN24/i24_ziliu/ForB/outputs/Mixed_Dataset/sd15_inpainting_with_attn_and_adaIN/ckpt_4001.pt"),main_process_only=True)
 
     # Freeze vae and text_encoder and set unet to trainable.
     vae.requires_grad_(False)
