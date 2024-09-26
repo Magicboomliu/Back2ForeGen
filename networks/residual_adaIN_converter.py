@@ -17,21 +17,27 @@ class Mid_Block_Network(nn.Module):
         self.conv1 = nn.Conv2d(in_channels=self.in_channels+1, out_channels=self.in_channels//2, kernel_size=3, padding=1)
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(in_channels=self.in_channels//2, out_channels=self.in_channels, kernel_size=3, padding=1)
-
         # Fully Connected Layers for mean
         self.fc1 = nn.Linear(self.in_channels*2, self.in_channels)
         self.fc2 = nn.Linear(self.in_channels, self.in_channels)
-
-
         # Time Embedding layers
         self.time_embed_fc = nn.Linear(time_embed_dim, self.in_channels)
         # Text Prompt layers
         self.text_prompt_fc = nn.Linear(text_prompt_dim, self.in_channels)
-
-        
         # Output layers
         self.output1 = nn.Linear(self.in_channels, self.in_channels)
         self.output2 = nn.Linear(self.in_channels, self.in_channels)
+        
+        # zero initialization
+        nn.init.zeros_(self.output1.weight) 
+        if self.output1.bias is not None:
+            nn.init.zeros_(self.output1.bias)  
+
+        nn.init.zeros_(self.output2.weight)  
+        if self.output2.bias is not None:
+            nn.init.zeros_(self.output2.bias)  
+        
+        
 
     def forward(self, mid_block_mean_list, mid_block_var_list, mid_block_feat_list, time_embed, text_prompt, foreground_mask):
 
@@ -71,20 +77,18 @@ class Mid_Block_Network(nn.Module):
         # Generate outputs
         out1 = self.output1(x.view(x.size(0), -1)).view(x.size(0), -1, 1, 1)
         out2 = self.output2(x.view(x.size(0), -1)).view(x.size(0), -1, 1, 1)
-
-        
-        quit()
-        converted_mean_list = [out1]
-        converted_var_list = [out2]
-
+        converted_mean_list = [out1+mid_block_mean_list[0]]
+        converted_var_list = [out2+mid_block_var_list[0]]
         return converted_mean_list, converted_var_list
 
-
 class CrossAttnDownBlock2D_Network(nn.Module):
-    def __init__(self, in_channels_list=[320, 640, 1280], time_embed_dim=512, text_prompt_dim=768):
+    def __init__(self, 
+                 in_channels_list=[320, 640, 1280], 
+                 time_embed_dim=512, 
+                 text_prompt_dim=768):
         super(CrossAttnDownBlock2D_Network, self).__init__()
+        
         self.in_channels_list = in_channels_list
-
         self.layers = nn.ModuleList()
         self.mean_layers = nn.ModuleList()
         self.variance_layers = nn.ModuleList()
@@ -92,14 +96,11 @@ class CrossAttnDownBlock2D_Network(nn.Module):
         self.output2_layers = nn.ModuleList()
         self.projection_layers_0 = nn.ModuleList()
         self.projection_layers_1 = nn.ModuleList()
-
-        # Time Embedding layers
         self.time_embed_fc = nn.Linear(time_embed_dim, in_channels_list[0])
-        # Text Prompt layers
         self.text_prompt_fc = nn.Linear(text_prompt_dim, in_channels_list[0])
 
         for in_channels in self.in_channels_list:
-            # Conv layers for x1
+
             self.layers.append(nn.Sequential(
                 nn.Conv2d(in_channels+1, in_channels // 2, kernel_size=3, padding=1),
                 nn.ReLU(),
@@ -107,13 +108,11 @@ class CrossAttnDownBlock2D_Network(nn.Module):
                 nn.ReLU()
             ))
 
-            # Fully connected layers for x2 (mean)
             self.mean_layers.append(nn.Sequential(
                 nn.Linear(in_channels*2, in_channels),
                 nn.ReLU(),
                 nn.Linear(in_channels, in_channels)
             ))
-
 
             self.projection_layers_0.append(
                 nn.Conv2d(in_channels_list[0],in_channels,kernel_size=1, padding=0)
@@ -122,13 +121,27 @@ class CrossAttnDownBlock2D_Network(nn.Module):
                 nn.Conv2d(in_channels_list[0],in_channels,kernel_size=1, padding=0)
             )
 
-
             # Output layers
             self.output1_layers.append(nn.Linear(in_channels, in_channels))
             self.output2_layers.append(nn.Linear(in_channels, in_channels))
 
-    def forward(self, 
-                CrossAttnDownBlock2D_block_mean_list_1,
+        
+        # zero initialization
+        for idx in range(len(self.output1_layers)):
+            nn.init.zeros_(self.output1_layers[idx].weight)  
+            
+            if self.output1_layers[idx].bias is not None:
+                nn.init.zeros_(self.output1_layers[idx].bias) 
+
+        for idx in range(len(self.output2_layers)):
+            nn.init.zeros_(self.output2_layers[idx].weight)  
+            
+            if self.output2_layers[idx].bias is not None:
+                nn.init.zeros_(self.output2_layers[idx].bias)  
+        
+        
+
+    def forward(self, CrossAttnDownBlock2D_block_mean_list_1,
                 CrossAttnDownBlock2D_block_mean_list_2,
                 CrossAttnDownBlock2D_block_mean_list_3,
                 CrossAttnDownBlock2D_block_var_list_1,
@@ -146,7 +159,6 @@ class CrossAttnDownBlock2D_Network(nn.Module):
         text_prompt_processed = torch.mean(text_prompt, dim=1)
         text_prompt_processed = self.text_prompt_fc(text_prompt_processed)
         text_prompt_processed = text_prompt_processed.view(text_prompt_processed.size(0), text_prompt_processed.size(1), 1, 1)
-
 
 
 
@@ -194,8 +206,6 @@ class CrossAttnDownBlock2D_Network(nn.Module):
             x3 = variances[i]
             fg_mask = fg_lists[i]
 
-
-
             # Process x1 (feature map)
             if fg_mask.shape[0]!=x1.shape[0]:
                 fg_mask = fg_mask.repeat(x1.shape[0],1,1,1)
@@ -219,17 +229,13 @@ class CrossAttnDownBlock2D_Network(nn.Module):
 
 
             combined = x1 + x2
-            current_dim = x1.shape[1]
             
             if current_text_prompt_processed.shape[0]!=1:
                 if current_text_prompt_processed.shape[0]<combined.shape[0]:
                     current_text_prompt_processed = current_text_prompt_processed.repeat(2,1,1,1)
-            
-
-
+        
             combined1 = combined + current_time_embed_processed + current_text_prompt_processed
             combined2 = combined1
-
 
             # Generate outputs
             out1 = self.output1_layers[i](combined1.view(combined1.size(0), -1)).view(combined1.size(0), -1, 1, 1)
@@ -249,11 +255,21 @@ class CrossAttnDownBlock2D_Network(nn.Module):
         returned_CrossAttnDownBlock2D_block_var_list_1 = return_var[0]
         returned_CrossAttnDownBlock2D_block_var_list_2 = return_var[1]
         returned_CrossAttnDownBlock2D_block_var_list_3 = return_var[2]
+        
+        
+        # Skip Connection
+        returned_CrossAttnDownBlock2D_block_mean_list_1 = [returned_CrossAttnDownBlock2D_block_mean_list_1[ind] + CrossAttnDownBlock2D_block_mean_list_1[ind] for ind in range(len(CrossAttnDownBlock2D_block_mean_list_1))]
+        returned_CrossAttnDownBlock2D_block_mean_list_2 = [returned_CrossAttnDownBlock2D_block_mean_list_2[ind] + CrossAttnDownBlock2D_block_mean_list_2[ind] for ind in range(len(CrossAttnDownBlock2D_block_mean_list_2))]
+        returned_CrossAttnDownBlock2D_block_mean_list_3 = [returned_CrossAttnDownBlock2D_block_mean_list_3[ind] + CrossAttnDownBlock2D_block_mean_list_3[ind] for ind in range(len(CrossAttnDownBlock2D_block_mean_list_3))]
 
 
+        returned_CrossAttnDownBlock2D_block_var_list_1 = [returned_CrossAttnDownBlock2D_block_var_list_1[ind] + CrossAttnDownBlock2D_block_var_list_1[ind] for ind in range(len(CrossAttnDownBlock2D_block_var_list_1))]
+        returned_CrossAttnDownBlock2D_block_var_list_2 = [returned_CrossAttnDownBlock2D_block_var_list_2[ind] + CrossAttnDownBlock2D_block_var_list_2[ind] for ind in range(len(CrossAttnDownBlock2D_block_var_list_2))]
+        returned_CrossAttnDownBlock2D_block_var_list_3 = [returned_CrossAttnDownBlock2D_block_var_list_3[ind] + CrossAttnDownBlock2D_block_var_list_3[ind] for ind in range(len(CrossAttnDownBlock2D_block_var_list_3))]
+        
+    
         return returned_CrossAttnDownBlock2D_block_mean_list_1,returned_CrossAttnDownBlock2D_block_mean_list_2,returned_CrossAttnDownBlock2D_block_mean_list_3, \
             returned_CrossAttnDownBlock2D_block_var_list_1,returned_CrossAttnDownBlock2D_block_var_list_2,returned_CrossAttnDownBlock2D_block_var_list_3
-
 
 class DownBlock_Branch_Network(nn.Module):
     def __init__(self,in_channels, time_embed_dim=512, text_prompt_dim=768):
@@ -278,6 +294,16 @@ class DownBlock_Branch_Network(nn.Module):
         # Output layers
         self.output1 = nn.Linear(self.in_channels, self.in_channels)
         self.output2 = nn.Linear(self.in_channels, self.in_channels)
+
+
+        # zero initialization
+        nn.init.zeros_(self.output1.weight) 
+        if self.output1.bias is not None:
+            nn.init.zeros_(self.output1.bias)  
+
+        nn.init.zeros_(self.output2.weight)  
+        if self.output2.bias is not None:
+            nn.init.zeros_(self.output2.bias)  
 
 
     def forward(self,down_block_mean_list, down_block_var_list, down_block_feat_list, time_embed, text_prompt, foreground_mask):
@@ -347,8 +373,15 @@ class DownBlock_Branch_Network(nn.Module):
 
         return_down_block_mean_list = list(torch.chunk(out1,dim=0,chunks=2))
         return_down_block_var_list = list(torch.chunk(out2,dim=0,chunks=2))
+        
+
+        return_down_block_mean_list = [down_block_mean_list[ind] + return_down_block_mean_list[ind] for ind in range(len(down_block_mean_list))]
+        return_down_block_var_list = [down_block_var_list[ind] + return_down_block_var_list[ind] for ind in range(len(down_block_var_list))]
+        
 
         return return_down_block_mean_list,return_down_block_var_list
+
+
 
 
 class UpBlock2D_Branch_Network(nn.Module):
@@ -370,10 +403,20 @@ class UpBlock2D_Branch_Network(nn.Module):
         # Text Prompt layers
         self.text_prompt_fc = nn.Linear(text_prompt_dim, self.in_channels)
 
-        
         # Output layers
         self.output1 = nn.Linear(self.in_channels, self.in_channels)
         self.output2 = nn.Linear(self.in_channels, self.in_channels)
+
+
+        # zero initialization
+        nn.init.zeros_(self.output1.weight) 
+        if self.output1.bias is not None:
+            nn.init.zeros_(self.output1.bias)  
+
+        nn.init.zeros_(self.output2.weight)  
+        if self.output2.bias is not None:
+            nn.init.zeros_(self.output2.bias)  
+
 
 
     def forward(self,down_block_mean_list, down_block_var_list, down_block_feat_list, time_embed, text_prompt, foreground_mask):
@@ -443,8 +486,13 @@ class UpBlock2D_Branch_Network(nn.Module):
         return_down_block_mean_list = list(torch.chunk(out1,dim=0,chunks=3))
         return_down_block_var_list = list(torch.chunk(out2,dim=0,chunks=3))
 
+        return_down_block_mean_list = [down_block_mean_list[ind] + return_down_block_mean_list[ind] for ind in range(len(down_block_mean_list))]
+        return_down_block_var_list = [down_block_var_list[ind] + return_down_block_var_list[ind] for ind in range(len(down_block_var_list))]
+        
+
 
         return return_down_block_mean_list,return_down_block_var_list
+
 
 
 class CrossAttnUpBlock2D_Network(nn.Module):
@@ -492,6 +540,19 @@ class CrossAttnUpBlock2D_Network(nn.Module):
             # Output layers
             self.output1_layers.append(nn.Linear(in_channels, in_channels))
             self.output2_layers.append(nn.Linear(in_channels, in_channels))
+
+        # zero initialization
+        for idx in range(len(self.output1_layers)):
+            nn.init.zeros_(self.output1_layers[idx].weight)  
+            
+            if self.output1_layers[idx].bias is not None:
+                nn.init.zeros_(self.output1_layers[idx].bias) 
+
+        for idx in range(len(self.output2_layers)):
+            nn.init.zeros_(self.output2_layers[idx].weight)  
+            
+            if self.output2_layers[idx].bias is not None:
+                nn.init.zeros_(self.output2_layers[idx].bias) 
 
     def forward(self, 
                 CrossAttnUpBlock2D_block_mean_list_1,
@@ -617,14 +678,26 @@ class CrossAttnUpBlock2D_Network(nn.Module):
         returned_CrossAttnUpBlock2D_block_var_list_3 = return_var[2]
 
 
+       # Skip Connection
+        returned_CrossAttnUpBlock2D_block_mean_list_1 = [returned_CrossAttnUpBlock2D_block_mean_list_1[ind] + CrossAttnUpBlock2D_block_mean_list_1[ind] for ind in range(len(CrossAttnUpBlock2D_block_mean_list_1))]
+        returned_CrossAttnUpBlock2D_block_mean_list_2 = [returned_CrossAttnUpBlock2D_block_mean_list_2[ind] + CrossAttnUpBlock2D_block_mean_list_2[ind] for ind in range(len(CrossAttnUpBlock2D_block_mean_list_2))]
+        returned_CrossAttnUpBlock2D_block_mean_list_3 = [returned_CrossAttnUpBlock2D_block_mean_list_3[ind] + CrossAttnUpBlock2D_block_mean_list_3[ind] for ind in range(len(CrossAttnUpBlock2D_block_mean_list_3))]
+
+
+        returned_CrossAttnUpBlock2D_block_var_list_1 = [returned_CrossAttnUpBlock2D_block_var_list_1[ind] + CrossAttnUpBlock2D_block_var_list_1[ind] for ind in range(len(CrossAttnUpBlock2D_block_var_list_1))]
+        returned_CrossAttnUpBlock2D_block_var_list_2 = [returned_CrossAttnUpBlock2D_block_var_list_2[ind] + CrossAttnUpBlock2D_block_var_list_2[ind] for ind in range(len(CrossAttnUpBlock2D_block_var_list_2))]
+        returned_CrossAttnUpBlock2D_block_var_list_3 = [returned_CrossAttnUpBlock2D_block_var_list_3[ind] + CrossAttnUpBlock2D_block_var_list_3[ind] for ind in range(len(CrossAttnUpBlock2D_block_var_list_3))]
+        
+
+
         return returned_CrossAttnUpBlock2D_block_mean_list_1,returned_CrossAttnUpBlock2D_block_mean_list_2,returned_CrossAttnUpBlock2D_block_mean_list_3, \
             returned_CrossAttnUpBlock2D_block_var_list_1,returned_CrossAttnUpBlock2D_block_var_list_2,returned_CrossAttnUpBlock2D_block_var_list_3
 
 
 
-class F2All_Converter(nn.Module):
+class AdaIN_Converter_Residual(nn.Module):
     def __init__(self,mid_channels=1280):
-        super(F2All_Converter, self).__init__()
+        super(AdaIN_Converter_Residual, self).__init__()
         self.mid_channels = mid_channels
 
         self.Mid_Block_Branch = Mid_Block_Network(in_channels=self.mid_channels)
@@ -823,7 +896,7 @@ if __name__=="__main__":
 
 
 
-    f2a_converter = F2All_Converter()
+    f2a_converter = AdaIN_Converter_Residual()
 
     time_embed = torch.randn(1,512)
     text_embed = torch.randn(1,77,768)
