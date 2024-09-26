@@ -2,7 +2,7 @@
 
 [Project Slide](https://docs.google.com/presentation/d/1CAWBnfH-Yx8kBsKU2P_xrVJmqkB3Ze7m/edit?usp=sharing&ouid=112605403951022205460&rtpof=true&sd=true)  
 
-[image](figures/method.png)
+![image](figures/result.png)
 ### Dependencies
 - Pytorch=2.0.1
 - Diffusers (lastest)
@@ -16,9 +16,16 @@ pip install -r requirements.txt
 
 ### Dataset and Pretrained Model Download
 
-```
+#### Dataset Download
+- [Dataset 10 kinds of data (10000 images totally)]()
 
-```
+
+#### Pretrained Models: 
+- [Stable Diffusion Base Model](https://drive.google.com/drive/folders/18VwbbSgXstljCZjSPtxRQk_d_u1Rap8B?usp=drive_link)
+- [Stable Diffusion Specific VAEs](https://drive.google.com/drive/folders/1GQAPNkIPwRQfHmbFZSqUxZE-xmUeZ1rD?usp=sharing)
+- [Anime Segmentation Model](https://huggingface.co/skytnt/anime-seg) 
+- [Pretrained Converters](https://drive.google.com/drive/folders/1TYNrCkQCWuR2wZunYG9kfw7XwSnhwSLL?usp=sharing)
+
 
 ### Training the Converters
 
