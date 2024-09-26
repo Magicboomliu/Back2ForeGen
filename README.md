@@ -61,7 +61,6 @@ sh train_sd_f2b.sh
 switch the model with `simple` or `Residual`.
 
 
-
 ### Inference the Background using Converters
 
 ```
