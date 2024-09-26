@@ -48,3 +48,5 @@ python sequential_pfn_inpainting_reference_only_inference.py \
 
 Inference_start_Simple
 # Inference_start_with_inpaint
+
+
