@@ -57,13 +57,36 @@ def calculate_mean_lpips(est_folder, GT_folder, model='alex', image_size=(256, 2
     return mean_lpips
 
 
+import argparse
+def parse_args():
+    parser = argparse.ArgumentParser(description="Infenrece")
 
+    parser.add_argument(
+        "--root_folder",
+        type=str,
+        default="/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial",
+        required=True,
+        help="/data1/liu/PFN/mnt/nfs-mnj-home-43/i24_ziliu/dataset/Synthesis_Images/")
+
+    parser.add_argument(
+        "--saved_name",
+        type=str,
+        default=None,
+        help="../outputs/evaluation_results/inpainting_pfn_with_initial")
+
+    
+    args = parser.parse_args()
+    
+    return args
 
 if __name__=="__main__":
     
-    root_folder = "/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/ours_adaIN"
+    args = parse_args()
     
-    fname_list = os.listdir(root_folder)
+    root_folder = args.root_folder
+    root_folder_example = "{}/ours_adaIN".format(root_folder)
+    
+    fname_list = os.listdir(root_folder_example)
     
     saved_dict = {}
     for fname in tqdm(fname_list):
@@ -72,52 +95,45 @@ if __name__=="__main__":
         saved_dict[fname] = dict()
         
         # ours adaIN
-        ours_adaIN_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/ours_adaIN/{}/'.format(fname)
-        GT_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/original_images/{}/'.format(fname)
+        ours_adaIN_est_folder = '{}/ours_adaIN/{}/'.format(root_folder,fname)
+        GT_folder = '{}/original_images/{}/'.format(root_folder,fname)
         fid_value_ours_adaIN = calculate_mean_lpips(est_folder=ours_adaIN_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['ours_adaIN'] = fid_value_ours_adaIN
         
         # ours attn
-        ours_attn_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/ours_attn/{}/'.format(fname)
+        ours_attn_est_folder = '{}/ours_attn/{}/'.format(root_folder,fname)
         fid_value_ours_attn = calculate_mean_lpips(est_folder=ours_attn_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['ours_attn'] = fid_value_ours_attn
         
         # our attn + adaIN
-        ours_adaIN_ours_attn_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/ours_adaIN_ours_attn/{}/'.format(fname)
+        ours_adaIN_ours_attn_est_folder = '{}/ours_adaIN_ours_attn/{}/'.format(root_folder,fname)
         fid_value_ours_adaIN_ours_attn = calculate_mean_lpips(est_folder=ours_adaIN_ours_attn_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['ours_attn_adaIN'] = fid_value_ours_adaIN_ours_attn
         
         
         
         # normal inpainting
-        normal_inpainting_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/normal_inpainting/{}/'.format(fname)
+        normal_inpainting_est_folder = '{}/normal_inpainting/{}/'.format(root_folder,fname)
         fid_value_normal_inpainting = calculate_mean_lpips(est_folder=normal_inpainting_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['normal_inpainting'] = fid_value_normal_inpainting
 
         # off adaIN
-        official_adaIN_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/official_adaIN/{}/'.format(fname)
+        official_adaIN_est_folder = '{}/official_adaIN/{}/'.format(root_folder,fname)
         fid_value_official_adaIN = calculate_mean_lpips(est_folder=official_adaIN_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['offical_adaIN'] = fid_value_official_adaIN
         
         # off attn
-        official_attn_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/official_attn/{}/'.format(fname)
+        official_attn_est_folder = '{}/official_attn/{}/'.format(root_folder,fname)
         fid_value_official_attn = calculate_mean_lpips(est_folder=official_attn_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['offical_attn'] = fid_value_official_attn
         
         # off AdaIN + Attn
-        official_attn_adaIN_est_folder = '/home/zliu/PFN/PFN24/PFN24/i24_ziliu/ForB/outputs/evaluation_results/inpainting_pfn_with_initial/official_attn_adaIN/{}/'.format(fname)
+        official_attn_adaIN_est_folder = '{}/official_attn_adaIN/{}/'.format(root_folder,fname)
         fid_value_official_attn_adaIN = calculate_mean_lpips(est_folder=official_attn_adaIN_est_folder,GT_folder=GT_folder)
         saved_dict[fname]['offical_attn_adain'] = fid_value_official_attn_adaIN
         
     
     
-    with open('output_lpips.json', 'w', encoding='utf-8') as f:
+    with open(args.saved_name, 'w', encoding='utf-8') as f:
         json.dump(saved_dict, f, ensure_ascii=False, indent=4)
-    print("Done!!!!!!")
 
-
-# # 示例调用
-# est_folder = '/path/to/est_folder'
-# GT_folder = '/path/to/GT_folder'
-# mean_lpips_score = calculate_mean_lpips(est_folder, GT_folder)
-# print(f"Mean LPIPS: {mean_lpips_score}")
