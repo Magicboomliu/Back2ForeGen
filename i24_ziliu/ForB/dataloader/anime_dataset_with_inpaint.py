@@ -12,10 +12,11 @@ from ForB.dataloader.utils import transforms
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import skimage.io
 
 
 
-class Anime_Dataset(Dataset):
+class Anime_Dataset_WithInpainting(Dataset):
     def __init__(self,
                  datapath,
                  trainlist,
@@ -25,7 +26,7 @@ class Anime_Dataset(Dataset):
                  target_resolution=(512,512),
                  save_filename=False,
                  get_foreground=False):
-        super(Anime_Dataset,self).__init__()
+        super(Anime_Dataset_WithInpainting,self).__init__()
         
         self.datapath = datapath
         self.trainlist = trainlist
@@ -59,8 +60,7 @@ class Anime_Dataset(Dataset):
             assert os.path.exists(image_path) and os.path.exists(background_path)
 
             sample = dict()
-            if self.save_filename:
-                sample['filename'] = prompt_id
+
 
             sample['prompt'] = prompt
             sample['image_path'] = image_path
@@ -92,10 +92,13 @@ class Anime_Dataset(Dataset):
 
         if self.get_foreground:
             # get the foreground_mask
+            initial_path = sample_path["image_path"].replace("Synthesis_Images","Init_Inpainting")
+            assert "Init_Inpainting" in initial_path
             sample['fg_mask'] = np.ones_like(sample['bg_mask'].astype(np.float32)) - sample['bg_mask'].astype(np.float32)
-            sample['fg_image'] = sample["image"] * sample['fg_mask']
-            # sample['fg_image'], sample['fg_mask'] = get_resize_foreground_and_mask(image=sample['fg_image'],
-            #                                             mask=sample['fg_mask'])
+            sample['fg_image'] = read_img(initial_path)
+            sample['fg_image'], _ = resize_image(sample['fg_image'],
+                                                 size=self.target_resolution,is_mask=False)
+
 
         if self.transform is not None:
             sample = self.transform(sample)
@@ -104,55 +107,3 @@ class Anime_Dataset(Dataset):
     
     def __len__(self):
         return len(self.samples)
-
-
-
-
-if __name__=="__main__":
-    import skimage.io
-    import matplotlib.pyplot as plt
-
-    datapath = "/mnt/nfs-mnj-home-43/i24_ziliu/dataset"
-    trainlist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
-    vallist = "/mnt/nfs-mnj-home-43/i24_ziliu/i24_ziliu/ForB/filenames/training_data_all_selected.txt"
-
-    train_transform_list = [transforms.ToTensor()]
-    train_transform = transforms.Compose(train_transform_list)
-
-    test_transform_list = [transforms.ToTensor()]
-    test_transform = transforms.Compose(test_transform_list)
-
-    anime_train_dataset = Anime_DatasetV2(datapath=datapath,
-                            trainlist=trainlist,
-                            vallist=vallist,
-                            transform=train_transform,
-                            save_filename=False,
-                            mode='train',
-                            target_resolution=(512,512))
-    anime_test_dataset = Anime_DatasetV2(datapath=datapath,
-                            trainlist=trainlist,
-                            vallist=vallist,
-                            transform=test_transform,
-                            save_filename=False,
-                            mode='test',
-                            target_resolution=(512,512))
-
-
-    for sample in tqdm(anime_train_dataset):
-
-        image = sample['image']
-        bg_mask = sample['bg_mask']
-        prompt = sample['prompt']
-
-        print(prompt)
-
-        
-
-
-
-
-
-
-
-
-

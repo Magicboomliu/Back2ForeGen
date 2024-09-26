@@ -5,4 +5,6 @@
 *.pt
 *.json
 *.ckpt
-ForB/outputs/logs
+i24_ziliu/ForB/trainer/wandb
+i24_ziliu/ForB/outputs
+*.zip
