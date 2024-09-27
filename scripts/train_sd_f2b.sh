@@ -120,7 +120,7 @@ logging_dir="../logs/$dataset_name"
 checkpointing_steps=1000
 report_to="tensorboard"
 adaIN_converter_type='simple'
-output_dir="../outputs/$dataset_name/sd15_inpainting_mix_adaIN_conveters_only"
+output_dir="../outputs/$dataset_name/sd15_inpainting_mix_adaIN_conveters_only_simple"
 
 CUDA_VISIBLE_DEVICES=0,1 accelerate launch --mixed_precision="fp16"  pfn_inpainting_simple_adaIN_converter_only.py \
                             --pretrained_model_name_or_path $pretrained_model_name_or_path \
