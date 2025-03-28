@@ -1,8 +1,5 @@
 # Harmonious Background Generation Driven by Foreground Images
 
-
-
-![image](figures/result.png)
 ### Dependencies
 - Pytorch=2.0.1
 - Diffusers (lastest)
