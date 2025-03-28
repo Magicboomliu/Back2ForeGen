@@ -1,6 +1,6 @@
 # Harmonious Background Generation Driven by Foreground Images
 
-[Project Slide](https://docs.google.com/presentation/d/1CAWBnfH-Yx8kBsKU2P_xrVJmqkB3Ze7m/edit?usp=sharing&ouid=112605403951022205460&rtpof=true&sd=true)  
+
 
 ![image](figures/result.png)
 ### Dependencies
